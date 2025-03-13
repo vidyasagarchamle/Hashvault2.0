@@ -10,6 +10,8 @@ A decentralized file storage platform built with Next.js, Lighthouse Protocol, a
 - 🔄 Real-time upload progress tracking
 - 📊 File management dashboard
 - 🌙 Dark/Light mode support
+- 🛡️ Fallback mechanisms for API failures
+- 📱 Responsive design for all devices
 
 ## Tech Stack
 
@@ -68,11 +70,15 @@ HashVault/
 ├── src/
 │   ├── app/                 # Next.js app directory
 │   ├── components/          # React components
+│   │   ├── dashboard/       # Dashboard components
+│   │   ├── providers/       # Context providers
+│   │   ├── ui/              # UI components
+│   │   └── upload/          # File upload components
 │   ├── lib/                 # Utility functions and clients
-│   ├── models/             # Database models
-│   └── types/              # TypeScript type definitions
-├── public/                 # Static assets
-└── pages/                  # API routes
+│   ├── models/              # Database models
+│   └── types/               # TypeScript type definitions
+├── public/                  # Static assets
+└── CHANGELOG.md             # Project changelog
 ```
 
 ## API Routes
@@ -80,6 +86,19 @@ HashVault/
 - `/api/upload` - File upload endpoint
 - `/api/retrieve/[cid]` - File retrieval endpoint
 - `/api/files` - File management endpoints
+- `/api/storage/info` - Storage usage information
+- `/api/storage/check` - Storage limit verification
+- `/api/storage/purchase` - Storage plan purchase
+
+## Recent Changes
+
+See the [CHANGELOG.md](CHANGELOG.md) file for a detailed list of changes in each version.
+
+### Latest Updates (v0.1.1)
+- Fixed theme toggle functionality
+- Improved dashboard loading with proper client-side rendering
+- Added fallback mechanisms for API failures
+- Enhanced error handling throughout the application
 
 ## Contributing
 
