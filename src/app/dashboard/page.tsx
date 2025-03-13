@@ -3,16 +3,17 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { FileUpload } from "@/components/upload/file-upload";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getWalletAddressFromUser } from '@/lib/wallet-utils';
-import StoragePurchase from "@/components/dashboard/StoragePurchase";
+import { StoragePurchase } from "@/components/dashboard/StoragePurchase";
 import FileList from "@/components/files/file-list";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 
 export default function DashboardPage() {
   const { ready, authenticated, user } = usePrivy();
   const router = useRouter();
+  const [isWalletReady, setIsWalletReady] = useState(false);
 
   useEffect(() => {
     if (ready && !authenticated) {
@@ -37,6 +38,10 @@ export default function DashboardPage() {
         hasLinkedAccounts: Array.isArray(user.linkedAccounts) && user.linkedAccounts.length > 0,
         authMethods: user.linkedAccounts?.map(acc => acc.type) || []
       });
+
+      // Check wallet readiness
+      const walletAddress = getWalletAddressFromUser(user);
+      setIsWalletReady(!!walletAddress);
     }
   }, [user]);
 
@@ -61,9 +66,6 @@ export default function DashboardPage() {
   if (!ready || !authenticated) {
     return null;
   }
-
-  const walletAddress = getWalletAddressFromUser(user);
-  const isWalletReady = !!walletAddress;
 
   return (
     <DashboardLayout>

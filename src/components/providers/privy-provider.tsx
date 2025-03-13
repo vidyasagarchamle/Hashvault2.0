@@ -1,22 +1,22 @@
 'use client';
 
 import { PrivyProvider } from "@privy-io/react-auth";
-import { useTheme } from "next-themes";
 
 export function PrivyClientProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { theme } = useTheme();
+  // Use a hardcoded app ID if the environment variable is not available
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID || "clrz1v1ij00yt9s2ggpkn1g9y";
 
   return (
     <PrivyProvider
-      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || ""}
+      appId={appId}
       config={{
         loginMethods: ["email", "wallet", "google", "apple"],
         appearance: {
-          theme: theme === "dark" ? "dark" : "light",
+          theme: "dark",
           accentColor: "#000000",
           showWalletLoginFirst: false,
         },

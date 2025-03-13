@@ -26,6 +26,7 @@ export default function StorageUsage() {
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPurchase, setShowPurchase] = useState(false);
+  const [apiError, setApiError] = useState(false);
 
   const fetchStorageInfo = async () => {
     if (!user?.wallet?.address) {
@@ -34,6 +35,7 @@ export default function StorageUsage() {
     }
 
     try {
+      // Try to fetch from API
       const response = await fetch('/api/storage/info', {
         headers: {
           'Authorization': user.wallet.address
@@ -51,9 +53,18 @@ export default function StorageUsage() {
         remaining: data.remainingStorage,
         purchased: data.totalStoragePurchased
       });
+      setApiError(false);
     } catch (error) {
       console.error('Error fetching storage info:', error);
-      toast.error('Failed to load storage information');
+      
+      // Set mock data as fallback
+      setStorageInfo({
+        used: 0,
+        total: FREE_STORAGE_LIMIT,
+        remaining: FREE_STORAGE_LIMIT,
+        purchased: 0
+      });
+      setApiError(true);
     } finally {
       setLoading(false);
     }
@@ -105,7 +116,16 @@ export default function StorageUsage() {
     );
   }
 
-  if (!storageInfo) return null;
+  if (!storageInfo) {
+    // Fallback if storageInfo is still null
+    setStorageInfo({
+      used: 0,
+      total: FREE_STORAGE_LIMIT,
+      remaining: FREE_STORAGE_LIMIT,
+      purchased: 0
+    });
+    return null;
+  }
 
   const usagePercentage = (storageInfo.used / storageInfo.total) * 100;
   const freeStorageUsed = Math.min(storageInfo.used, FREE_STORAGE_LIMIT);
@@ -120,6 +140,12 @@ export default function StorageUsage() {
             Free Tier
           </span>
         </div>
+
+        {apiError && (
+          <div className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+            Using estimated storage data. API connection failed.
+          </div>
+        )}
 
         <div className="space-y-2">
           <div>

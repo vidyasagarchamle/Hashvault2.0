@@ -19,10 +19,13 @@
     "@radix-ui/react-label": "^2.1.2",
     "@radix-ui/react-progress": "^1.1.2",
     "@radix-ui/react-slot": "^1.1.2",
+    "@react-three/drei": "^9.92.7",
+    "@react-three/fiber": "^8.15.12",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/auth-helpers-react": "^0.5.0",
     "@supabase/supabase-js": "^2.49.1",
     "@types/formidable": "^3.4.5",
+    "aos": "^2.3.4",
     "aws4": "^1.13.2",
     "bufferutil": "^4.0.9",
     "class-variance-authority": "^0.7.1",
@@ -49,6 +52,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/aos": "^3.0.7",
     "@types/node": "^20.17.24",
     "@types/node-fetch": "^2.6.12",
     "@types/react": "^18.2.0",
