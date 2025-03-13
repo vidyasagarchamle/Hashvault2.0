@@ -8,6 +8,7 @@ const fileSchema = new mongoose.Schema({
   cid: {
     type: String,
     required: true,
+    unique: true,
   },
   size: {
     type: String,
@@ -30,6 +31,10 @@ const fileSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+}, {
+  timestamps: true, // This will automatically manage createdAt and updatedAt
+  toJSON: { virtuals: true }, // Include virtuals when converting to JSON
+  toObject: { virtuals: true } // Include virtuals when converting to Object
 });
 
 // Add indexes for faster queries

@@ -14,23 +14,23 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Download, ExternalLink, Copy, Check } from "lucide-react";
-import { LighthouseDirectClient } from "@/lib/lighthouse-direct-client";
+import { WebHashClient } from "@/lib/webhash-client";
 import { toast } from "sonner";
 import { getWalletAddressFromUser } from '@/lib/wallet-utils';
+import { Card } from "@/components/ui/card";
 
-interface UploadedFile {
-  _id: string;
+interface FileItem {
   fileName: string;
   cid: string;
   size: string;
-  lastUpdate: string;
   mimeType: string;
+  lastUpdate: string;
 }
 
 export default function FilesPage() {
   const { ready, authenticated, user } = usePrivy();
   const router = useRouter();
-  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedCid, setCopiedCid] = useState<string | null>(null);
 
@@ -47,43 +47,30 @@ export default function FilesPage() {
   }, [authenticated]);
 
   const loadFiles = async () => {
-    // Log the full user object for debugging
-    console.log("FILES PAGE - FULL USER OBJECT:", user);
-
-    // Get wallet address using our utility function
-    const walletAddress = getWalletAddressFromUser(user);
-
-    if (!walletAddress) {
-      console.error('No wallet address available');
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
-      const client = LighthouseDirectClient.getInstance();
-      const uploads = await client.getUploads(walletAddress);
-      
-      if (uploads && Array.isArray(uploads)) {
-        setFiles(uploads);
-      } else {
-        console.error('Invalid uploads format:', uploads);
-        toast.error('Received invalid data format from storage provider');
-        setFiles([]);
-      }
+      const client = WebHashClient.getInstance();
+      const files = await client.getUploads(user?.wallet?.address || '');
+      setFiles(files);
     } catch (error) {
       console.error('Error loading files:', error);
-      toast.error('Failed to load files. Please try again later.');
-      setFiles([]);
+      toast.error('Failed to load files');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDownload = async (file: UploadedFile) => {
+  const handleDownload = async (file: FileItem) => {
     try {
-      const url = `https://gateway.lighthouse.storage/ipfs/${file.cid}`;
-      const response = await fetch(url);
+      const url = `https://ipfs.io/ipfs/${file.cid}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_WEBHASH_API_KEY}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+      }
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -100,27 +87,12 @@ export default function FilesPage() {
     }
   };
 
-  const handleViewFile = (file: UploadedFile) => {
-    // For images, PDFs, and videos, we can use the gateway URL directly
-    const directViewTypes = ['image/', 'application/pdf', 'video/'];
-    const isDirectViewable = directViewTypes.some(type => file.mimeType.startsWith(type));
-    
-    if (isDirectViewable) {
-      const url = `https://gateway.lighthouse.storage/ipfs/${file.cid}`;
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } else {
-      // For other file types, trigger download
-      handleDownload(file);
-      toast.info('File type requires download to view');
-    }
-  };
-
-  const handleCopyCid = async (cid: string) => {
+  const handleCopy = async (cid: string) => {
     try {
       await navigator.clipboard.writeText(cid);
       setCopiedCid(cid);
-      toast.success('CID copied to clipboard');
       setTimeout(() => setCopiedCid(null), 2000);
+      toast.success('CID copied to clipboard');
     } catch (error) {
       console.error('Error copying CID:', error);
       toast.error('Failed to copy CID');
@@ -157,9 +129,17 @@ export default function FilesPage() {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-900"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       </DashboardLayout>
+    );
+  }
+
+  if (files.length === 0) {
+    return (
+      <Card className="p-8 text-center">
+        <p className="text-gray-500 dark:text-gray-400">No files uploaded yet</p>
+      </Card>
     );
   }
 
@@ -173,77 +153,62 @@ export default function FilesPage() {
           </p>
         </div>
 
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>CID</TableHead>
-                <TableHead>Uploaded</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {files.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                    No files uploaded yet
-                  </TableCell>
-                </TableRow>
-              ) :
-                files.map((file) => (
-                  <TableRow key={`${file._id}-${file.cid}`}>
-                    <TableCell>{file.fileName}</TableCell>
-                    <TableCell>{file.size}</TableCell>
-                    <TableCell>{file.mimeType}</TableCell>
-                    <TableCell className="font-mono">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate max-w-[120px]" title={file.cid}>
-                          {file.cid}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => handleCopyCid(file.cid)}
-                          title="Copy CID"
-                        >
-                          {copiedCid === file.cid ? (
-                            <Check className="h-3 w-3 text-green-500" />
-                          ) : (
-                            <Copy className="h-3 w-3" />
-                          )}
-                        </Button>
-                      </div>
-                    </TableCell>
-                    <TableCell>{file.lastUpdate}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleViewFile(file)}
-                          title="View file"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDownload(file)}
-                          title="Download file"
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              }
-            </TableBody>
-          </Table>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {files.map((file) => (
+            <Card key={file.cid} className="p-4">
+              <div className="flex flex-col gap-2">
+                <h3 className="font-medium truncate" title={file.fileName}>
+                  {file.fileName}
+                </h3>
+                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                  <span>{file.size}</span>
+                  <span>•</span>
+                  <span>{file.lastUpdate}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex-1" title={file.cid}>
+                    CID: {file.cid}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => handleCopy(file.cid)}
+                  >
+                    {copiedCid === file.cid ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => handleDownload(file)}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      const url = `${process.env.NEXT_PUBLIC_WEBHASH_API_URL}/ipfs/${file.cid}`;
+                      const authUrl = `${url}?authorization=${process.env.NEXT_PUBLIC_WEBHASH_API_KEY}`;
+                      window.open(authUrl, '_blank');
+                    }}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    View
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
       </div>
     </DashboardLayout>

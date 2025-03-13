@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import { Download, Trash2, FileIcon, Image, FileText, Film, Link } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LighthouseDirectClient } from '@/lib/lighthouse-direct-client';
+import { WebHashClient } from '@/lib/webhash-client';
 import { toast } from 'sonner';
 import { usePrivy } from '@privy-io/react-auth';
+import { storageUpdateEvent, STORAGE_UPDATED } from '@/components/dashboard/StorageUsage';
 
 interface FileItem {
   fileName: string;
@@ -24,9 +25,10 @@ const getFileIcon = (mimeType: string) => {
   return FileIcon;
 };
 
-export function FileList() {
+export default function FileList() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingFile, setDeletingFile] = useState<string | null>(null);
   const { user } = usePrivy();
 
   useEffect(() => {
@@ -36,24 +38,16 @@ export function FileList() {
   }, [user?.wallet?.address]);
 
   const loadFiles = async () => {
+    if (!user?.wallet?.address) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      if (!user?.wallet?.address) {
-        console.debug('No wallet address available for loading files');
-        return;
-      }
-
-      const client = LighthouseDirectClient.getInstance();
-      const uploads = await client.getUploads(user.wallet.address);
-      
-      // Map the files to include formatted dates and sizes
-      const formattedFiles = uploads.map(file => ({
-        ...file,
-        lastUpdate: new Date(file.updatedAt).toLocaleString(),
-        formattedSize: formatFileSize(parseInt(file.size))
-      }));
-
-      setFiles(formattedFiles);
-      console.debug('Files loaded:', formattedFiles);
+      setLoading(true);
+      const client = WebHashClient.getInstance();
+      const files = await client.getUploads(user.wallet.address);
+      setFiles(files);
     } catch (error) {
       console.error('Error loading files:', error);
       toast.error('Failed to load files');
@@ -70,26 +64,38 @@ export function FileList() {
   };
 
   const handleDelete = async (cid: string) => {
-    try {
-      if (!user?.wallet?.address) {
-        toast.error('Please connect your wallet first');
-        return;
-      }
+    if (!user?.wallet?.address) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
 
-      const client = LighthouseDirectClient.getInstance();
+    try {
+      setDeletingFile(cid);
+      const client = WebHashClient.getInstance();
       await client.deleteFile(cid, user.wallet.address);
-      await loadFiles(); // Reload the files after deletion
+      await loadFiles();
+      // Trigger storage update
+      storageUpdateEvent.dispatchEvent(new Event(STORAGE_UPDATED));
       toast.success('File deleted successfully');
     } catch (error) {
       console.error('Error deleting file:', error);
       toast.error('Failed to delete file');
+    } finally {
+      setDeletingFile(null);
     }
   };
 
   const handleDownload = async (file: FileItem) => {
     try {
-      const url = `https://gateway.lighthouse.storage/ipfs/${file.cid}`;
-      const response = await fetch(url);
+      const url = `https://ipfs.io/ipfs/${file.cid}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_WEBHASH_API_KEY}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+      }
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -137,7 +143,7 @@ export function FileList() {
       {files.map((file) => {
         const FileIconComponent = getFileIcon(file.mimeType);
         const isImage = file.mimeType.startsWith('image/');
-        const fileUrl = `https://gateway.lighthouse.storage/ipfs/${file.cid}`;
+        const fileUrl = `https://ipfs.io/ipfs/${file.cid}`;
 
         return (
           <Card key={file.cid} className="overflow-hidden">
@@ -195,6 +201,7 @@ export function FileList() {
                   size="sm"
                   className="flex-1"
                   onClick={() => handleDelete(file.cid)}
+                  disabled={deletingFile === file.cid}
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete

@@ -1,19 +1,31 @@
 /// <reference types="node" />
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
+import { connectToDatabase } from '@/lib/mongodb';
 import FileModel from '@/models/File';
+import { User } from '@/models/User';
 
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
     const { fileName, cid, size, mimeType, walletAddress } = data;
 
+    console.debug('Received upload request:', { fileName, cid, size, mimeType, walletAddress });
+
     if (!walletAddress) {
+      console.error('Upload failed: No wallet address provided');
       return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
     }
 
-    await connectDB();
+    if (!fileName || !cid || !size || !mimeType) {
+      console.error('Upload failed: Missing required fields', { fileName, cid, size, mimeType });
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
 
+    console.debug('Connecting to MongoDB...');
+    await connectToDatabase();
+    console.debug('MongoDB connected successfully');
+
+    console.debug('Creating file record:', { fileName, cid, size, mimeType, walletAddress });
     const file = await FileModel.create({
       fileName,
       cid,
@@ -22,8 +34,31 @@ export async function POST(request: NextRequest) {
       walletAddress,
     });
 
-    console.debug('File metadata stored:', file);
+    const sizeInBytes = parseInt(size, 10);
+    if (isNaN(sizeInBytes)) {
+      console.error('Invalid file size:', size);
+      return NextResponse.json({ error: 'Invalid file size' }, { status: 400 });
+    }
 
+    console.debug('Updating user storage usage:', { walletAddress, sizeInBytes });
+    const userUpdate = await User.findOneAndUpdate(
+      { walletAddress },
+      { 
+        $inc: { totalStorageUsed: sizeInBytes },
+        $setOnInsert: { walletAddress }
+      },
+      { 
+        upsert: true,
+        new: true
+      }
+    );
+
+    if (!userUpdate) {
+      console.error('Failed to update user storage usage');
+      return NextResponse.json({ error: 'Failed to update user storage' }, { status: 500 });
+    }
+
+    console.debug('File metadata stored successfully:', file);
     return NextResponse.json({ success: true, file });
   } catch (error) {
     console.error('Error in upload route:', error);
@@ -54,40 +89,15 @@ export async function GET(req: Request) {
       );
     }
 
-    console.debug('Attempting to connect to MongoDB...');
-    try {
-      await connectDB();
-      console.debug('MongoDB connected successfully');
-    } catch (dbError) {
-      console.error('MongoDB connection error:', dbError);
-      return NextResponse.json(
-        {
-          error: 'Database connection failed',
-          message: dbError instanceof Error ? dbError.message : 'Unknown error',
-          timestamp: new Date().toISOString()
-        },
-        { status: 500 }
-      );
-    }
+    console.debug('Connecting to MongoDB...');
+    await connectToDatabase();
+    console.debug('MongoDB connected successfully');
 
     console.debug('Fetching files for wallet:', walletAddress);
-    let files;
-    try {
-      files = await FileModel.find({ walletAddress })
-        .sort({ createdAt: -1 })
-        .lean()
-        .exec();
-    } catch (queryError) {
-      console.error('Error querying files:', queryError);
-      return NextResponse.json(
-        {
-          error: 'Failed to query files',
-          message: queryError instanceof Error ? queryError.message : 'Unknown error',
-          timestamp: new Date().toISOString()
-        },
-        { status: 500 }
-      );
-    }
+    const files = await FileModel.find({ walletAddress })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
 
     // Transform the files to include _id as a string
     const transformedFiles = files.map(file => ({
@@ -99,14 +109,54 @@ export async function GET(req: Request) {
     console.debug(`Found ${transformedFiles.length} files for wallet ${walletAddress}`);
     return NextResponse.json({ success: true, files: transformedFiles });
   } catch (error) {
-    console.error('Error in GET /api/upload:', error);
+    console.error('Error in GET files route:', error);
     return NextResponse.json(
       { 
         error: 'Failed to fetch files',
         message: error instanceof Error ? error.message : 'Unknown error',
-        details: error instanceof Error ? error.stack : String(error),
         timestamp: new Date().toISOString()
       },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const cid = searchParams.get('cid');
+    const walletAddress = searchParams.get('walletAddress');
+
+    if (!cid || !walletAddress) {
+      return NextResponse.json(
+        { error: 'CID and wallet address are required' },
+        { status: 400 }
+      );
+    }
+
+    await connectToDatabase();
+
+    const file = await FileModel.findOne({ cid, walletAddress });
+    if (!file) {
+      return NextResponse.json(
+        { error: 'File not found or unauthorized' },
+        { status: 404 }
+      );
+    }
+
+    await FileModel.deleteOne({ cid, walletAddress });
+
+    const sizeInBytes = parseInt(file.size, 10) || 0;
+    await User.findOneAndUpdate(
+      { walletAddress },
+      { $inc: { totalStorageUsed: -sizeInBytes } }
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete file' },
       { status: 500 }
     );
   }

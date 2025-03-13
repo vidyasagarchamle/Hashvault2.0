@@ -81,11 +81,31 @@ export default function FileUpload() {
       return;
     }
 
-    setUploading(true);
-    setUploadProgress(0);
-    setUploadStartTime(Date.now());
-
     try {
+      // Check storage limits before uploading
+      const response = await fetch('/api/storage/check', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileSize: file.size,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        if (error.code === 'STORAGE_LIMIT_EXCEEDED') {
+          toast.error('Storage limit exceeded. Please purchase additional storage.');
+          return;
+        }
+        throw new Error(error.message || 'Failed to check storage limits');
+      }
+
+      setUploading(true);
+      setUploadProgress(0);
+      setUploadStartTime(Date.now());
+
       console.log(`Starting upload of: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
       const client = LighthouseDirectClient.getInstance();
       

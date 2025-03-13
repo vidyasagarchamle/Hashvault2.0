@@ -1,12 +1,14 @@
 'use client';
 
 import { usePrivy } from "@privy-io/react-auth";
-import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { FileUpload } from "@/components/upload/file-upload";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { getWalletAddressFromUser } from '@/lib/wallet-utils';
+import StoragePurchase from "@/components/dashboard/StoragePurchase";
+import FileList from "@/components/files/file-list";
+import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 
 export default function DashboardPage() {
   const { ready, authenticated, user } = usePrivy();
@@ -38,13 +40,18 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  // Show a notification for email users
+  // Show a notification for email users about wallet creation
   useEffect(() => {
-    if (user && user.email && !user.wallet?.address) {
+    if (user && user.email) {
       const walletAddress = getWalletAddressFromUser(user);
-      if (walletAddress) {
-        toast.info(
-          "You're signed in with email. A virtual wallet has been created for you to store files.",
+      if (!walletAddress) {
+        toast.error(
+          "Please wait while we create your embedded wallet. This may take a few moments...",
+          { duration: 10000 }
+        );
+      } else if (!user.wallet?.address) {
+        toast.success(
+          "Your embedded wallet is ready for storing files.",
           { duration: 6000 }
         );
       }
@@ -55,17 +62,26 @@ export default function DashboardPage() {
     return null;
   }
 
+  const walletAddress = getWalletAddressFromUser(user);
+  const isWalletReady = !!walletAddress;
+
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Upload Files</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
           <p className="text-muted-foreground">
-            Securely store and manage your files with HashVault.
+            Upload and manage your files securely.
           </p>
         </div>
-        
-        <FileUpload />
+
+        {isWalletReady ? (
+          <FileUpload />
+        ) : (
+          <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200">
+            <p>Waiting for your wallet to be ready. This usually takes a few moments after login.</p>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

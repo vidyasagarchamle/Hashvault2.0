@@ -20,11 +20,8 @@ interface StorageInfo {
 }
 
 interface UploadResponse {
-  data: {
-    Name: string;
-    Hash: string;
-    Size: string;
-  };
+  message: string;
+  cid: string;
 }
 
 interface UploadedFile {
@@ -56,15 +53,12 @@ interface ProgressData {
 
 export class WebHashClient {
   private static instance: WebHashClient;
-  private apiKey: string;
   private apiUrl: string;
+  private apiKey: string;
 
   private constructor() {
-    this.apiKey = process.env.NEXT_PUBLIC_WEBHASH_API_KEY || '';
-    this.apiUrl = process.env.NEXT_PUBLIC_WEBHASH_API_URL || 'http://52.38.175.117:5000';
-    if (!this.apiKey) {
-      console.warn('WebHash API key not found');
-    }
+    this.apiUrl = 'http://52.38.175.117:5000';
+    this.apiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
   }
 
   public static getInstance(): WebHashClient {
@@ -75,19 +69,18 @@ export class WebHashClient {
   }
 
   private guessMimeType(fileName: string): string {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-    switch (extension) {
-      case 'mp4':
-        return 'video/mp4';
-      case 'mov':
-        return 'video/quicktime';
-      case 'avi':
-        return 'video/x-msvideo';
-      case 'mkv':
-        return 'video/x-matroska';
-      default:
-        return 'application/octet-stream';
-    }
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    const mimeTypes: { [key: string]: string } = {
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'gif': 'image/gif',
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'txt': 'text/plain'
+    };
+    return mimeTypes[ext || ''] || 'application/octet-stream';
   }
 
   async getUploads(walletAddress: string): Promise<any[]> {
@@ -123,77 +116,91 @@ export class WebHashClient {
         throw new Error('Wallet address is required');
       }
 
-      if (!this.apiKey) {
-        throw new Error('WebHash API key is not configured');
+      if (!file) {
+        throw new Error('File is required');
       }
 
-      console.debug('Starting file upload to WebHash node...');
-      console.debug('File to upload:', { name: file.name, type: file.type, size: file.size });
+      console.debug('Starting file upload to WebHash...', {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        walletAddress
+      });
 
-      try {
-        // Create FormData for the file
-        const formData = new FormData();
-        formData.append('file', file);
+      // Create FormData for the file
+      const formData = new FormData();
+      formData.append('file', file);
 
-        // Upload to WebHash node
-        const response = await fetch(`${this.apiUrl}/upload`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`
-          },
-          body: formData
+      // Upload to WebHash IPFS endpoint
+      console.debug('Uploading to WebHash IPFS endpoint...');
+      const response = await fetch(`${this.apiUrl}/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('WebHash upload failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
         });
-
-        if (!response.ok) {
-          throw new Error(`Upload failed with status: ${response.status}`);
-        }
-
-        const output = await response.json();
-        console.debug('Upload response from WebHash:', output);
-
-        if (!output.Hash) {
-          throw new Error('Invalid response from WebHash: ' + JSON.stringify(output));
-        }
-
-        // Store metadata through our API
-        console.debug('Storing file metadata...');
-        const metadataResponse = await fetch('/api/upload', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileName: file.name,
-            cid: output.Hash,
-            size: file.size.toString(),
-            mimeType: file.type || this.guessMimeType(file.name),
-            walletAddress,
-          }),
-        });
-
-        if (!metadataResponse.ok) {
-          throw new Error(`Failed to store file metadata: ${metadataResponse.statusText}`);
-        }
-
-        const metadata = await metadataResponse.json();
-        console.debug('Metadata stored successfully:', metadata);
-        
-        if (onProgress) onProgress(100);
-        
-        return {
-          Name: file.name,
-          Hash: output.Hash,
-          Size: file.size.toString(),
-          fileId: metadata.file._id,
-          metadata: metadata.file
-        };
-      } catch (uploadError) {
-        console.error('Error during WebHash upload:', uploadError);
-        if (uploadError instanceof Error) {
-          throw new Error(`WebHash upload failed: ${uploadError.message}`);
-        }
-        throw uploadError;
+        throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
+
+      const output = await response.json();
+      console.debug('WebHash upload response:', output);
+
+      if (!output.cid) {
+        console.error('Invalid WebHash response:', output);
+        throw new Error('Invalid response from IPFS: Missing CID');
+      }
+
+      // Store metadata through our API
+      console.debug('Storing file metadata...', {
+        fileName: file.name,
+        cid: output.cid,
+        size: file.size,
+        mimeType: file.type || this.guessMimeType(file.name)
+      });
+
+      const metadataResponse = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          cid: output.cid,
+          size: file.size.toString(),
+          mimeType: file.type || this.guessMimeType(file.name),
+          walletAddress,
+        }),
+      });
+
+      if (!metadataResponse.ok) {
+        const errorData = await metadataResponse.json();
+        console.error('Metadata storage failed:', {
+          status: metadataResponse.status,
+          statusText: metadataResponse.statusText,
+          error: errorData
+        });
+        throw new Error(`Failed to store file metadata: ${JSON.stringify(errorData)}`);
+      }
+
+      const metadata = await metadataResponse.json();
+      console.debug('Metadata stored successfully:', metadata);
+      
+      if (onProgress) onProgress(100);
+
+      return {
+        ...metadata,
+        cid: output.cid
+      };
+
     } catch (error) {
       console.error('Upload error:', error);
       throw error;

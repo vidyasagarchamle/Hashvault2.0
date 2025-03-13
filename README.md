@@ -5,7 +5,7 @@ A decentralized file storage platform built with Next.js, Lighthouse Protocol, a
 ## Features
 
 - 🔐 Secure authentication with Privy
-- 📤 Decentralized file storage using Lighthouse Protocol
+- 📤 Decentralized file storage using WebHash
 - 📱 Modern, responsive UI with Tailwind CSS
 - 🔄 Real-time upload progress tracking
 - 📊 File management dashboard
@@ -15,7 +15,7 @@ A decentralized file storage platform built with Next.js, Lighthouse Protocol, a
 
 - **Frontend**: Next.js 14, React, Tailwind CSS
 - **Authentication**: Privy
-- **Storage**: Lighthouse Protocol
+- **Storage**: WebHash
 - **Database**: MongoDB
 - **Styling**: Shadcn UI Components
 
