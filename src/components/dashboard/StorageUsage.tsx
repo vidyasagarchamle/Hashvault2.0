@@ -64,6 +64,10 @@ export default function StorageUsage() {
     const now = Date.now();
     if (!force && now - lastFetchTime.current < MIN_FETCH_INTERVAL) {
       console.log("Skipping fetch - too soon since last fetch");
+      // Make sure loading is false even if we skip the fetch
+      if (isMounted.current && loading) {
+        setLoading(false);
+      }
       return;
     }
     
@@ -100,6 +104,8 @@ export default function StorageUsage() {
           purchased: data.totalStoragePurchased || 0
         });
         setApiError(false);
+        // Explicitly set loading to false after data is received
+        setLoading(false);
       }
     } catch (error) {
       console.error('Error fetching storage info:', error);
@@ -107,14 +113,15 @@ export default function StorageUsage() {
       // Keep existing data if we have it, otherwise use default
       if (isMounted.current) {
         setApiError(true);
+        // Ensure loading is set to false even on error
+        setLoading(false);
       }
     } finally {
       if (isMounted.current) {
-        setLoading(false);
         setRefreshing(false);
       }
     }
-  }, [user, address]);
+  }, [user, address, loading]);
 
   // Listen for storage updates
   useEffect(() => {
@@ -132,13 +139,23 @@ export default function StorageUsage() {
   useEffect(() => {
     // Set initial state
     setLoading(true);
+    
+    // Set a timeout to ensure loading state doesn't get stuck
+    const timeoutId = setTimeout(() => {
+      if (isMounted.current && loading) {
+        console.log("Loading timeout reached, forcing loading to false");
+        setLoading(false);
+      }
+    }, 3000); // 3 seconds timeout
+    
     fetchStorageInfo();
     
     // Cleanup function
     return () => {
+      clearTimeout(timeoutId);
       isMounted.current = false;
     };
-  }, [fetchStorageInfo]);
+  }, [fetchStorageInfo, loading]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -172,8 +189,18 @@ export default function StorageUsage() {
     usagePercentage,
     freeStorageUsed,
     freeStoragePercentage,
-    FREE_STORAGE_LIMIT
+    FREE_STORAGE_LIMIT,
+    loading, // Add loading state to debug output
+    apiError
   });
+
+  // Force loading to false if we have data
+  useEffect(() => {
+    if (loading && storageInfo.total > 0) {
+      console.log("Forcing loading to false because we have data");
+      setLoading(false);
+    }
+  }, [storageInfo, loading]);
 
   return (
     <Card className="p-4">
@@ -199,7 +226,8 @@ export default function StorageUsage() {
           </div>
         </div>
 
-        {loading ? (
+        {/* Only show loading state if we don't have any data yet */}
+        {loading && storageInfo.used === 0 && storageInfo.total === FREE_STORAGE_LIMIT ? (
           <div className="animate-pulse space-y-4">
             <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
             <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded"></div>
