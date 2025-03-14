@@ -22,29 +22,47 @@ export async function GET(req: Request) {
 
     // Clean up the wallet address (remove any "Bearer " prefix if present)
     const walletAddress = authHeader.replace('Bearer ', '').toLowerCase();
+    console.log('Processing request for wallet:', walletAddress);
 
-    console.log('Connecting to database...');
-    try {
-      await connectToDatabase();
-      console.log('Connected to database');
-    } catch (error) {
-      console.error('Database connection error:', error);
+    // Connect to database with retries
+    let retries = 3;
+    let lastError;
+    
+    while (retries > 0) {
+      try {
+        console.log(`Attempting database connection (${retries} retries left)...`);
+        await connectToDatabase();
+        console.log('Database connected successfully');
+        break;
+      } catch (error: any) {
+        lastError = error;
+        console.error(`Database connection attempt failed: ${error.message}`);
+        retries--;
+        if (retries > 0) {
+          // Wait for 1 second before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
+
+    if (retries === 0) {
+      console.error('All database connection attempts failed:', lastError);
       return NextResponse.json(
-        { error: "Database connection failed" },
+        { error: "Database connection failed after multiple attempts" },
         { status: 503 }
       );
     }
 
-    console.log('Finding user with wallet address:', walletAddress);
     // Get user's storage information
     let user;
     try {
+      console.log('Looking up user in database...');
       user = await User.findOne({ walletAddress });
-      console.log('User found:', user ? 'yes' : 'no');
-    } catch (error) {
+      console.log('User lookup result:', user ? 'Found' : 'Not found');
+    } catch (error: any) {
       console.error('User lookup error:', error);
       return NextResponse.json(
-        { error: "Failed to lookup user" },
+        { error: `Failed to lookup user: ${error.message}` },
         { status: 500 }
       );
     }
@@ -52,6 +70,7 @@ export async function GET(req: Request) {
     if (!user) {
       // Create a new user with default values
       try {
+        console.log('Creating new user...');
         const newUser = new User({
           walletAddress,
           totalStorageUsed: 0,
@@ -59,7 +78,7 @@ export async function GET(req: Request) {
           totalAvailableStorage: FREE_STORAGE_LIMIT,
         });
         await newUser.save();
-        console.log('Created new user');
+        console.log('New user created successfully');
 
         return NextResponse.json({
           totalStorageUsed: 0,
@@ -67,10 +86,10 @@ export async function GET(req: Request) {
           totalAvailableStorage: FREE_STORAGE_LIMIT,
           remainingStorage: FREE_STORAGE_LIMIT,
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error('User creation error:', error);
         return NextResponse.json(
-          { error: "Failed to create new user" },
+          { error: `Failed to create new user: ${error.message}` },
           { status: 500 }
         );
       }
@@ -94,10 +113,10 @@ export async function GET(req: Request) {
       totalAvailableStorage,
       remainingStorage,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Storage info error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch storage information" },
+      { error: `Failed to fetch storage information: ${error.message}` },
       { status: 500 }
     );
   }
