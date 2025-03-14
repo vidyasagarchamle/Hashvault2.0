@@ -31,15 +31,16 @@ export async function connectToDatabase() {
     console.log('Creating new MongoDB connection...');
     const opts: ConnectOptions = {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-      connectTimeoutMS: 10000,
-      maxPoolSize: 10,
-      minPoolSize: 5,
+      serverSelectionTimeoutMS: 3000,
+      socketTimeoutMS: 30000,
+      connectTimeoutMS: 5000,
+      maxPoolSize: 5,
+      minPoolSize: 1,
       retryWrites: true,
       retryReads: true,
       w: 'majority',
       readPreference: 'primary' as const,
+      family: 4,
     };
 
     cached.promise = mongoose.connect(MONGODB_URI!, opts)

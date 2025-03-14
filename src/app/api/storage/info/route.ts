@@ -7,7 +7,10 @@ import { FREE_STORAGE_LIMIT } from '@/lib/constants';
 export const dynamic = 'force-dynamic';
 
 // Set a timeout for the entire route
-export const maxDuration = 10; // 10 seconds
+export const maxDuration = 5; // Reduced from 10 to 5 seconds
+
+// Cache the response for 30 seconds
+export const revalidate = 30;
 
 export async function GET(req: Request) {
   try {
@@ -25,7 +28,7 @@ export async function GET(req: Request) {
     console.log('Processing request for wallet:', walletAddress);
 
     // Connect to database with retries
-    let retries = 3;
+    let retries = 2; // Reduced from 3 to 2
     let lastError;
     
     while (retries > 0) {
@@ -39,8 +42,8 @@ export async function GET(req: Request) {
         console.error(`Database connection attempt failed: ${error.message}`);
         retries--;
         if (retries > 0) {
-          // Wait for 1 second before retrying
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Wait for 500ms before retrying (reduced from 1000ms)
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
     }
@@ -57,7 +60,7 @@ export async function GET(req: Request) {
     let user;
     try {
       console.log('Looking up user in database...');
-      user = await User.findOne({ walletAddress });
+      user = await User.findOne({ walletAddress }).lean(); // Added .lean() for better performance
       console.log('User lookup result:', user ? 'Found' : 'Not found');
     } catch (error: any) {
       console.error('User lookup error:', error);
