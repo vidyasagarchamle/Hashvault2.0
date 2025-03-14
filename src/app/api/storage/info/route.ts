@@ -7,14 +7,17 @@ import { FREE_STORAGE_LIMIT } from '@/lib/constants';
 export const dynamic = 'force-dynamic';
 
 // Set a timeout for the entire route
-export const maxDuration = 5; // Reduced from 10 to 5 seconds
+export const maxDuration = 5; // 5 seconds
 
 // Cache the response for 60 seconds
 export const revalidate = 60;
 
 // In-memory cache for storage info
 const storageInfoCache = new Map<string, { data: any, timestamp: number }>();
-const CACHE_TTL = 60 * 1000; // 60 seconds
+const CACHE_TTL = 120 * 1000; // 2 minutes (increased from 60 seconds)
+
+// Track ongoing requests to prevent duplicate calls
+const ongoingRequests = new Map<string, Promise<any>>();
 
 export async function GET(req: Request) {
   try {
@@ -29,19 +32,53 @@ export async function GET(req: Request) {
 
     // Clean up the wallet address (remove any "Bearer " prefix if present)
     const walletAddress = authHeader.replace('Bearer ', '').toLowerCase();
+    
+    // Create a unique request ID
+    const requestId = `storage_info:${walletAddress}`;
+    
+    // Check if there's an ongoing request for this wallet
+    if (ongoingRequests.has(requestId)) {
+      console.log('Returning existing request for wallet:', walletAddress);
+      return ongoingRequests.get(requestId);
+    }
+    
+    // Create a new request promise
+    const requestPromise = processStorageInfoRequest(walletAddress, requestId);
+    ongoingRequests.set(requestId, requestPromise);
+    
+    // Clean up the ongoing request map after the request is complete
+    requestPromise.finally(() => {
+      ongoingRequests.delete(requestId);
+    });
+    
+    return requestPromise;
+  } catch (error: any) {
+    console.error("Storage info error:", error);
+    return NextResponse.json(
+      { error: `Failed to fetch storage information: ${error.message}` },
+      { status: 500 }
+    );
+  }
+}
+
+async function processStorageInfoRequest(walletAddress: string, requestId: string) {
+  try {
     console.log('Processing request for wallet:', walletAddress);
 
     // Check in-memory cache first
-    const cacheKey = `storage_info:${walletAddress}`;
-    const cachedData = storageInfoCache.get(cacheKey);
+    const cachedData = storageInfoCache.get(requestId);
     
     if (cachedData && (Date.now() - cachedData.timestamp) < CACHE_TTL) {
       console.log('Returning cached storage info for wallet:', walletAddress);
-      return NextResponse.json(cachedData.data);
+      return NextResponse.json(cachedData.data, {
+        headers: {
+          'Cache-Control': `public, max-age=${CACHE_TTL / 1000}`,
+        }
+      });
     }
 
     // Connect to database with retries
-    let retries = 2; // Reduced from 3 to 2
+    let retries = 2;
     let lastError;
     
     while (retries > 0) {
@@ -55,7 +92,7 @@ export async function GET(req: Request) {
         console.error(`Database connection attempt failed: ${error.message}`);
         retries--;
         if (retries > 0) {
-          // Wait for 500ms before retrying (reduced from 1000ms)
+          // Wait for 500ms before retrying
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
@@ -109,12 +146,16 @@ export async function GET(req: Request) {
         };
         
         // Cache the response
-        storageInfoCache.set(cacheKey, {
+        storageInfoCache.set(requestId, {
           data: responseData,
           timestamp: Date.now()
         });
 
-        return NextResponse.json(responseData);
+        return NextResponse.json(responseData, {
+          headers: {
+            'Cache-Control': `public, max-age=${CACHE_TTL / 1000}`,
+          }
+        });
       } catch (error: any) {
         console.error('User creation error:', error);
         return NextResponse.json(
@@ -139,16 +180,20 @@ export async function GET(req: Request) {
     console.log('Returning storage info:', responseData);
     
     // Cache the response
-    storageInfoCache.set(cacheKey, {
+    storageInfoCache.set(requestId, {
       data: responseData,
       timestamp: Date.now()
     });
 
-    return NextResponse.json(responseData);
+    return NextResponse.json(responseData, {
+      headers: {
+        'Cache-Control': `public, max-age=${CACHE_TTL / 1000}`,
+      }
+    });
   } catch (error: any) {
-    console.error("Storage info error:", error);
+    console.error("Storage info processing error:", error);
     return NextResponse.json(
-      { error: `Failed to fetch storage information: ${error.message}` },
+      { error: `Failed to process storage information: ${error.message}` },
       { status: 500 }
     );
   }

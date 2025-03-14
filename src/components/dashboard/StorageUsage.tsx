@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,14 @@ interface StorageInfo {
 export const storageUpdateEvent = new EventTarget();
 export const STORAGE_UPDATED = 'storage_updated';
 
+// Default storage info for fallback
+const DEFAULT_STORAGE_INFO: StorageInfo = {
+  used: 0,
+  total: FREE_STORAGE_LIMIT,
+  remaining: FREE_STORAGE_LIMIT,
+  purchased: 0
+};
+
 export default function StorageUsage() {
   const { user } = useAuth();
   const { address } = useAccount();
@@ -32,25 +40,51 @@ export default function StorageUsage() {
   const [showPurchase, setShowPurchase] = useState(false);
   const [apiError, setApiError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Use a ref to track if the component is mounted
+  const isMounted = useRef(true);
+  
+  // Use a ref to track the last fetch time to prevent excessive calls
+  const lastFetchTime = useRef<number>(0);
+  const MIN_FETCH_INTERVAL = 10000; // 10 seconds minimum between fetches
 
-  const fetchStorageInfo = useCallback(async () => {
+  const fetchStorageInfo = useCallback(async (force = false) => {
     // Get wallet address from user object or direct from wagmi
     const walletAddress = getWalletAddressFromUser(user) || address;
     
     if (!walletAddress) {
       console.log("No wallet address available for storage info");
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+        // Set default storage info if we don't have a wallet address
+        setStorageInfo(DEFAULT_STORAGE_INFO);
+      }
       return;
     }
+    
+    // Check if we've fetched recently and this isn't a forced refresh
+    const now = Date.now();
+    if (!force && now - lastFetchTime.current < MIN_FETCH_INTERVAL) {
+      console.log("Skipping fetch - too soon since last fetch");
+      return;
+    }
+    
+    // Update last fetch time
+    lastFetchTime.current = now;
 
     try {
-      setRefreshing(true);
+      if (isMounted.current) {
+        setRefreshing(true);
+      }
+      
       console.log("Fetching storage info with address:", walletAddress);
       // Try to fetch from API
       const response = await fetch('/api/storage/info', {
         headers: {
           'Authorization': walletAddress
-        }
+        },
+        // Add cache control headers
+        cache: 'no-store'
       });
 
       if (!response.ok) {
@@ -59,34 +93,36 @@ export default function StorageUsage() {
 
       const data = await response.json();
       console.log("Storage info received:", data);
-      setStorageInfo({
-        used: data.totalStorageUsed,
-        total: data.totalAvailableStorage,
-        remaining: data.remainingStorage,
-        purchased: data.totalStoragePurchased
-      });
-      setApiError(false);
+      
+      if (isMounted.current) {
+        setStorageInfo({
+          used: data.totalStorageUsed,
+          total: data.totalAvailableStorage,
+          remaining: data.remainingStorage,
+          purchased: data.totalStoragePurchased
+        });
+        setApiError(false);
+      }
     } catch (error) {
       console.error('Error fetching storage info:', error);
       
       // Set mock data as fallback
-      setStorageInfo({
-        used: 0,
-        total: FREE_STORAGE_LIMIT,
-        remaining: FREE_STORAGE_LIMIT,
-        purchased: 0
-      });
-      setApiError(true);
+      if (isMounted.current) {
+        setStorageInfo(DEFAULT_STORAGE_INFO);
+        setApiError(true);
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMounted.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [user, address]);
 
   // Listen for storage updates
   useEffect(() => {
     const handleStorageUpdate = () => {
-      fetchStorageInfo();
+      fetchStorageInfo(true); // Force refresh when storage is updated
     };
 
     storageUpdateEvent.addEventListener(STORAGE_UPDATED, handleStorageUpdate);
@@ -97,8 +133,14 @@ export default function StorageUsage() {
 
   // Only fetch on initial mount and when user/address changes
   useEffect(() => {
+    // Set initial state
+    setLoading(true);
     fetchStorageInfo();
-    // No interval or continuous polling
+    
+    // Cleanup function
+    return () => {
+      isMounted.current = false;
+    };
   }, [fetchStorageInfo]);
 
   const formatBytes = (bytes: number) => {
@@ -122,7 +164,7 @@ export default function StorageUsage() {
     );
   }
 
-  if (loading) {
+  if (loading && !storageInfo) {
     return (
       <Card className="p-4">
         <div className="animate-pulse space-y-4">
@@ -134,19 +176,11 @@ export default function StorageUsage() {
     );
   }
 
-  if (!storageInfo) {
-    // Fallback if storageInfo is still null
-    setStorageInfo({
-      used: 0,
-      total: FREE_STORAGE_LIMIT,
-      remaining: FREE_STORAGE_LIMIT,
-      purchased: 0
-    });
-    return null;
-  }
-
-  const usagePercentage = (storageInfo.used / storageInfo.total) * 100;
-  const freeStorageUsed = Math.min(storageInfo.used, FREE_STORAGE_LIMIT);
+  // Use default storage info if storageInfo is still null
+  const info = storageInfo || DEFAULT_STORAGE_INFO;
+  
+  const usagePercentage = (info.used / info.total) * 100;
+  const freeStorageUsed = Math.min(info.used, FREE_STORAGE_LIMIT);
   const freeStoragePercentage = (freeStorageUsed / FREE_STORAGE_LIMIT) * 100;
 
   return (
@@ -158,7 +192,7 @@ export default function StorageUsage() {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={fetchStorageInfo} 
+              onClick={() => fetchStorageInfo(true)} 
               disabled={refreshing}
               className="p-1 h-auto"
             >
@@ -191,11 +225,11 @@ export default function StorageUsage() {
             />
           </div>
 
-          {storageInfo.purchased > 0 && (
+          {info.purchased > 0 && (
             <div>
-              <p className="text-xs text-gray-500 mb-1">Purchased Storage ({formatBytes(storageInfo.purchased)})</p>
+              <p className="text-xs text-gray-500 mb-1">Purchased Storage ({formatBytes(info.purchased)})</p>
               <Progress 
-                value={(storageInfo.used - freeStorageUsed) / storageInfo.purchased * 100} 
+                value={(info.used - freeStorageUsed) / info.purchased * 100} 
                 className="h-2"
               />
             </div>
@@ -204,7 +238,7 @@ export default function StorageUsage() {
 
         <div className="flex justify-between text-xs text-gray-500">
           <span>
-            {formatBytes(storageInfo.remaining)} remaining
+            {formatBytes(info.remaining)} remaining
           </span>
           <span>{Math.round(usagePercentage)}% used</span>
         </div>
