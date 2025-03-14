@@ -17,12 +17,29 @@ export async function GET(req: Request) {
       );
     }
 
-    await connectToDatabase();
+    // Clean up the wallet address (remove any "Bearer " prefix if present)
+    const walletAddress = authHeader.replace('Bearer ', '').toLowerCase();
 
+    console.log('Connecting to database...');
+    await connectToDatabase();
+    console.log('Connected to database');
+
+    console.log('Finding user with wallet address:', walletAddress);
     // Get user's storage information
-    const user = await User.findOne({ walletAddress: authHeader });
+    const user = await User.findOne({ walletAddress });
+    console.log('User found:', user ? 'yes' : 'no');
+
     if (!user) {
-      // Return default values for new users
+      // Create a new user with default values
+      const newUser = new User({
+        walletAddress,
+        totalStorageUsed: 0,
+        totalStoragePurchased: 0,
+        totalAvailableStorage: FREE_STORAGE_LIMIT,
+      });
+      await newUser.save();
+      console.log('Created new user');
+
       return NextResponse.json({
         totalStorageUsed: 0,
         totalStoragePurchased: 0,
@@ -35,6 +52,13 @@ export async function GET(req: Request) {
     const totalAvailableStorage = FREE_STORAGE_LIMIT + (user.totalStoragePurchased || 0);
     const totalStorageUsed = user.totalStorageUsed || 0;
     const remainingStorage = Math.max(0, totalAvailableStorage - totalStorageUsed);
+
+    console.log('Returning storage info:', {
+      totalStorageUsed,
+      totalStoragePurchased: user.totalStoragePurchased || 0,
+      totalAvailableStorage,
+      remainingStorage,
+    });
 
     return NextResponse.json({
       totalStorageUsed,

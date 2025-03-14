@@ -21,6 +21,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
+    lowercase: true,
   },
   email: {
     type: String,
@@ -39,29 +40,26 @@ const userSchema = new mongoose.Schema({
   totalStorageUsed: {
     type: Number,
     default: 0,
+    min: 0,
   },
   totalStoragePurchased: {
     type: Number,
     default: 0,
+    min: 0,
   },
   totalAvailableStorage: {
     type: Number,
     default: FREE_STORAGE_LIMIT,
+    min: FREE_STORAGE_LIMIT,
   },
   lastStorageCheck: {
     type: Date,
     default: Date.now,
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
 });
 
 // Virtual for remaining storage
@@ -76,10 +74,17 @@ userSchema.methods.hasEnoughStorage = function(requiredSize: number): boolean {
 
 // Method to update storage usage
 userSchema.methods.updateStorageUsage = async function(bytesUsed: number): Promise<void> {
-  this.totalStorageUsed += bytesUsed;
-  this.updatedAt = new Date();
+  this.totalStorageUsed = Math.max(0, this.totalStorageUsed + bytesUsed);
   await this.save();
 };
+
+// Pre-save hook to ensure totalAvailableStorage is at least FREE_STORAGE_LIMIT
+userSchema.pre('save', function(next) {
+  if (this.totalAvailableStorage < FREE_STORAGE_LIMIT) {
+    this.totalAvailableStorage = FREE_STORAGE_LIMIT;
+  }
+  next();
+});
 
 // Delete the existing User model if it exists
 if (mongoose.models.User) {
