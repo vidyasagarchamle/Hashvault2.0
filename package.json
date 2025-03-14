@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "clear-db": "node scripts/clear-db.js"
+    "clear-db": "ts-node scripts/clear-db.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.12.4",

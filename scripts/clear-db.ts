@@ -1,27 +1,28 @@
-const mongoose = require('mongoose');
-const { connectToDatabase } = require('../src/lib/mongodb');
+import { connectToDatabase } from '../src/lib/mongodb';
+import mongoose from 'mongoose';
 
 async function clearDatabase() {
   try {
-    console.log('Connecting to MongoDB...');
     await connectToDatabase();
-    console.log('Connected successfully');
-
+    
     // Check if we have a database connection
     if (!mongoose.connection.db) {
       throw new Error('No database connection');
     }
-
-    // Get all collections
+    
+    // Get all collection names
     const collections = await mongoose.connection.db.collections();
-
+    const collectionNames = collections.map(collection => collection.collectionName);
+    
+    console.log('Found collections:', collectionNames);
+    
     // Drop each collection
-    for (const collection of collections) {
-      console.log(`Dropping collection: ${collection.collectionName}`);
-      await collection.drop();
+    for (const collectionName of collectionNames) {
+      await mongoose.connection.db.dropCollection(collectionName);
+      console.log(`Dropped collection: ${collectionName}`);
     }
-
-    console.log('All collections cleared successfully');
+    
+    console.log('Database cleared successfully');
     process.exit(0);
   } catch (error) {
     console.error('Error clearing database:', error);
