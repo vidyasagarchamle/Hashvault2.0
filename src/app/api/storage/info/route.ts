@@ -3,6 +3,9 @@ import { User } from "@/models/User";
 import { connectToDatabase } from "@/lib/mongodb";
 import { FREE_STORAGE_LIMIT } from '@/lib/constants';
 
+// Mark this route as dynamic to allow headers usage
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: Request) {
   try {
     // Get the authorization header

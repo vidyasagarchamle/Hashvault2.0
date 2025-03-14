@@ -37,9 +37,8 @@ const fileSchema = new mongoose.Schema({
   toObject: { virtuals: true } // Include virtuals when converting to Object
 });
 
-// Add indexes for faster queries
+// Add index for faster queries on walletAddress and createdAt
 fileSchema.index({ walletAddress: 1, createdAt: -1 });
-fileSchema.index({ cid: 1 });
 
 // Define interface for type safety
 export interface IFile extends mongoose.Document {
