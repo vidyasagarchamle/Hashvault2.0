@@ -146,10 +146,10 @@ export default function HomePage() {
               <h1 className="text-6xl md:text-8xl font-bold tracking-tight bg-gradient-to-b from-white to-white/50 bg-clip-text text-transparent leading-[1.1]">
                 Store Your Files
                 <br />
-                Securely on IPFS
+                Permanently on IPFS
               </h1>
               <p className="text-2xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
-                Fast, reliable, and always accessible. Your files are stored on decentralized networks.
+                Fast, reliable, and always accessible. Your files are stored on decentralized networks, built on the Webhash Protocol for seamless and secure storage.
               </p>
               <div className="flex items-center justify-center gap-4 pt-8">
                 <ConnectButton.Custom>
