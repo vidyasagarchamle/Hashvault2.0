@@ -10,9 +10,10 @@ import { getWalletAddressFromUser } from '@/lib/wallet-utils';
 
 interface DashboardContentProps {
   view: 'upload' | 'files';
+  onViewChange?: (view: 'upload' | 'files') => void;
 }
 
-export function DashboardContent({ view }: DashboardContentProps) {
+export function DashboardContent({ view, onViewChange }: DashboardContentProps) {
   const { user } = useAuth();
   const { address } = useAccount();
   const [isWalletReady, setIsWalletReady] = useState(false);
@@ -27,6 +28,13 @@ export function DashboardContent({ view }: DashboardContentProps) {
     }
   }, [user, address]);
 
+  const handleUploadComplete = () => {
+    // Switch to the files view when upload is complete
+    if (onViewChange) {
+      onViewChange('files');
+    }
+  };
+
   if (!isWalletReady) {
     return (
       <div className="text-center">
@@ -39,7 +47,7 @@ export function DashboardContent({ view }: DashboardContentProps) {
     <div>
       {view === 'upload' ? (
         <>
-          <FileUpload />
+          <FileUpload onUploadComplete={handleUploadComplete} />
           {showStoragePurchase && (
             <div className="mt-8">
               <StoragePurchase onClose={() => setShowStoragePurchase(false)} />

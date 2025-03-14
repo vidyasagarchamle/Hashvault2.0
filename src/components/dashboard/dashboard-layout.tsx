@@ -111,7 +111,10 @@ export function DashboardLayout() {
           {/* Main Content */}
           <div className="col-span-12 md:col-span-9">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-              <DashboardContent view={currentView} />
+              <DashboardContent 
+                view={currentView} 
+                onViewChange={(view) => setCurrentView(view)} 
+              />
             </div>
           </div>
         </div>

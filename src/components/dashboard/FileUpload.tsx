@@ -182,8 +182,13 @@ export default function FileUpload() {
       // Trigger storage update event
       storageUpdateEvent.dispatchEvent(new Event(STORAGE_UPDATED));
       
-      // Redirect to My Files page
-      router.push('/dashboard/files');
+      // Navigate to the dashboard files page
+      router.push('/dashboard');
+      // Wait a bit for the navigation to start, then update the view
+      setTimeout(() => {
+        // This will be handled by the dashboard layout
+        // The URL will remain /dashboard but the view will change to 'files'
+      }, 100);
     } catch (error) {
       console.error('Upload error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to upload file');
