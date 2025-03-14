@@ -8,9 +8,71 @@ import { ReactNode, useState, useEffect } from 'react';
 import { WagmiProvider, createConfig, http } from 'wagmi';
 import { base, mainnet } from 'wagmi/chains';
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
+import { cookieStorage, createStorage } from 'wagmi';
 
 // Ensure we have a valid project ID - hardcoded for reliability
 const projectId = 'c6c9bacd35167d2e3c2ed97d3a51a7c0';
+
+// Create a hybrid storage that combines localStorage and cookies for better persistence
+const hybridStorage = {
+  getItem: (key: string) => {
+    // Try localStorage first, then fallback to cookies
+    if (typeof window !== 'undefined') {
+      const localValue = localStorage.getItem(key);
+      if (localValue) return localValue;
+      
+      // Try sessionStorage as fallback
+      const sessionValue = sessionStorage.getItem(key);
+      if (sessionValue) return sessionValue;
+    }
+    
+    // Finally try cookies (for SSR)
+    if (typeof document !== 'undefined') {
+      const cookies = document.cookie.split(';');
+      const cookie = cookies.find(c => c.trim().startsWith(`${key}=`));
+      if (cookie) {
+        return cookie.split('=')[1];
+      }
+    }
+    
+    return null;
+  },
+  setItem: (key: string, value: string) => {
+    // Store in multiple places for redundancy
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(key, value);
+        sessionStorage.setItem(key, value);
+      } catch (e) {
+        console.warn('Error storing wallet data in storage:', e);
+      }
+    }
+    
+    // Also set as cookie with 7-day expiry for persistence
+    if (typeof document !== 'undefined') {
+      const date = new Date();
+      date.setTime(date.getTime() + (7 * 24 * 60 * 60 * 1000)); // 7 days
+      document.cookie = `${key}=${value};expires=${date.toUTCString()};path=/;SameSite=Strict`;
+    }
+  },
+  removeItem: (key: string) => {
+    // Remove from all storage types
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    }
+    
+    // Remove cookie
+    if (typeof document !== 'undefined') {
+      document.cookie = `${key}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Strict`;
+    }
+  }
+};
+
+// Create a custom storage that uses our hybrid approach
+const storage = createStorage({
+  storage: typeof window !== 'undefined' ? hybridStorage : cookieStorage,
+});
 
 // Create the wagmi config with RainbowKit's getDefaultConfig
 const config = getDefaultConfig({
@@ -23,6 +85,7 @@ const config = getDefaultConfig({
   },
   // Enable auto-connect for better user experience
   ssr: true,
+  storage,
 });
 
 // Create a new QueryClient for React Query with longer cache times
@@ -43,6 +106,16 @@ export function RainbowKitClientProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     setMounted(true);
     console.log("RainbowKitClientProvider mounted with projectId:", projectId);
+    
+    // Force reconnection attempt on page load
+    if (typeof window !== 'undefined') {
+      // Trigger reconnection with a small delay to ensure everything is loaded
+      setTimeout(() => {
+        const reconnectEvent = new Event('visibilitychange');
+        document.dispatchEvent(reconnectEvent);
+        console.log('RainbowKit triggered reconnection event');
+      }, 1000);
+    }
   }, []);
 
   // Don't render anything until mounted to prevent hydration errors

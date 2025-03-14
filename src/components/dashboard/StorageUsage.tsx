@@ -33,7 +33,7 @@ const DEFAULT_STORAGE_INFO: StorageInfo = {
 
 export default function StorageUsage() {
   const { user } = useAuth();
-  const { address } = useAccount();
+  const { address, isConnected } = useAccount();
   const [storageInfo, setStorageInfo] = useState<StorageInfo>(DEFAULT_STORAGE_INFO);
   const [loading, setLoading] = useState(false);
   const [showPurchase, setShowPurchase] = useState(false);
@@ -46,6 +46,9 @@ export default function StorageUsage() {
   // Use a ref to track the last fetch time to prevent excessive calls
   const lastFetchTime = useRef<number>(0);
   const MIN_FETCH_INTERVAL = 10000; // 10 seconds minimum between fetches
+  
+  // Store the current wallet address in a ref to detect changes
+  const prevWalletAddressRef = useRef<string | undefined | null>(null);
 
   // Get wallet address for display
   const walletAddress = getWalletAddressFromUser(user) || address;
@@ -125,14 +128,34 @@ export default function StorageUsage() {
 
   // Fetch on initial mount and when wallet address changes
   useEffect(() => {
-    if (walletAddress) {
-      fetchStorageInfo(true);
+    // Check if wallet address has changed
+    if (walletAddress !== prevWalletAddressRef.current) {
+      console.log("Wallet address changed, refreshing storage info");
+      prevWalletAddressRef.current = walletAddress;
+      
+      if (walletAddress) {
+        fetchStorageInfo(true);
+      } else {
+        // Reset to default if wallet disconnected
+        setStorageInfo(DEFAULT_STORAGE_INFO);
+      }
     }
     
     return () => {
       isMounted.current = false;
     };
-  }, [walletAddress]);
+  }, [walletAddress, isConnected]);
+  
+  // Also listen for connection status changes
+  useEffect(() => {
+    if (isConnected && walletAddress) {
+      console.log("Wallet connected, refreshing storage info");
+      fetchStorageInfo(true);
+    } else if (!isConnected) {
+      console.log("Wallet disconnected, resetting storage info");
+      setStorageInfo(DEFAULT_STORAGE_INFO);
+    }
+  }, [isConnected]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';

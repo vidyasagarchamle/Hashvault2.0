@@ -11,6 +11,7 @@ export function useWalletPersistence() {
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const [reconnectAttempted, setReconnectAttempted] = useState(false);
+  const [reconnectSuccess, setReconnectSuccess] = useState(false);
 
   // Attempt to reconnect on initial load
   useEffect(() => {
@@ -35,11 +36,15 @@ export function useWalletPersistence() {
             try {
               await connect({ connector });
               console.log('Reconnection successful');
-            } catch (connectError) {
+              setReconnectSuccess(true);
+            } catch (connectError: any) {
               console.warn('Could not automatically reconnect:', connectError);
-              // Clear the stored wallet if reconnection fails
-              localStorage.removeItem('lastConnectedWallet');
-              localStorage.removeItem('lastConnectedAddress');
+              // Don't clear storage on first failure - we'll try again on visibility change
+              if (connectError.message?.includes('User rejected')) {
+                // Only clear if user explicitly rejected
+                localStorage.removeItem('lastConnectedWallet');
+                localStorage.removeItem('lastConnectedAddress');
+              }
             }
           } else {
             console.log('Connector not found for:', lastConnectedWallet);
@@ -47,6 +52,9 @@ export function useWalletPersistence() {
             localStorage.removeItem('lastConnectedWallet');
             localStorage.removeItem('lastConnectedAddress');
           }
+        } else if (isConnected) {
+          console.log('Already connected, no need to reconnect');
+          setReconnectSuccess(true);
         }
       } catch (error) {
         console.error('Error in reconnection process:', error);
@@ -55,16 +63,19 @@ export function useWalletPersistence() {
       }
     };
 
-    // Add a small delay to ensure the connectors are ready
+    // Add a delay to ensure the connectors are ready
     const timer = setTimeout(() => {
       attemptReconnect();
-    }, 1500); // Increased delay to ensure RainbowKit is fully initialized
+    }, 2500); // Increased delay to ensure RainbowKit is fully initialized
 
     // Also attempt reconnect when the page becomes visible again
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !isConnected) {
-        console.log('Page became visible, attempting reconnect');
-        attemptReconnect();
+      if (document.visibilityState === 'visible') {
+        console.log('Page became visible, checking connection status');
+        if (!isConnected && !reconnectSuccess) {
+          console.log('Not connected, attempting reconnect');
+          attemptReconnect();
+        }
       }
     };
 
@@ -74,7 +85,7 @@ export function useWalletPersistence() {
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isConnected, connect, connectors, reconnectAttempted]);
+  }, [isConnected, connect, connectors, reconnectAttempted, reconnectSuccess]);
 
   // Save the current wallet type when connected
   useEffect(() => {
@@ -84,6 +95,10 @@ export function useWalletPersistence() {
         console.log('Saving connected wallet to localStorage:', activeConnector.id, 'address:', address);
         localStorage.setItem('lastConnectedWallet', activeConnector.id);
         localStorage.setItem('lastConnectedAddress', address);
+        
+        // Also save to sessionStorage for more reliable persistence
+        sessionStorage.setItem('lastConnectedWallet', activeConnector.id);
+        sessionStorage.setItem('lastConnectedAddress', address);
       }
     }
   }, [isConnected, connectors, address]);
@@ -93,6 +108,12 @@ export function useWalletPersistence() {
     if (!isConnected) {
       // If disconnected, update the UI accordingly
       console.log('Wallet disconnected');
+      
+      // Check if this was an intentional disconnect
+      const wasConnected = localStorage.getItem('lastConnectedWallet');
+      if (wasConnected) {
+        console.log('Unexpected disconnect, will attempt to reconnect on next visibility change');
+      }
     }
   }, [isConnected]);
 
@@ -105,6 +126,10 @@ export function useWalletPersistence() {
         if (activeConnector && address) {
           localStorage.setItem('lastConnectedWallet', activeConnector.id);
           localStorage.setItem('lastConnectedAddress', address);
+          
+          // Also save to sessionStorage for more reliable persistence
+          sessionStorage.setItem('lastConnectedWallet', activeConnector.id);
+          sessionStorage.setItem('lastConnectedAddress', address);
         }
       }
     };
@@ -115,5 +140,5 @@ export function useWalletPersistence() {
     };
   }, [isConnected, connectors, address]);
 
-  return { isConnected };
+  return { isConnected, reconnectSuccess };
 } 

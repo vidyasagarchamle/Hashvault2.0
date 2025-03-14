@@ -11,7 +11,7 @@ interface WalletPersistenceProviderProps {
 export function WalletPersistenceProvider({ children }: WalletPersistenceProviderProps) {
   const [initialized, setInitialized] = useState(false);
   // Use our custom hook to handle wallet persistence
-  const { isConnected } = useWalletPersistence();
+  const { isConnected, reconnectSuccess } = useWalletPersistence();
   const { address } = useAccount();
   
   // Log connection status changes
@@ -25,6 +25,13 @@ export function WalletPersistenceProvider({ children }: WalletPersistenceProvide
       setInitialized(true);
     }
   }, [isConnected, address, initialized]);
+  
+  // Log reconnection success
+  useEffect(() => {
+    if (reconnectSuccess) {
+      console.log('Wallet reconnection was successful');
+    }
+  }, [reconnectSuccess]);
   
   // Force reconnection attempt when the component mounts
   useEffect(() => {

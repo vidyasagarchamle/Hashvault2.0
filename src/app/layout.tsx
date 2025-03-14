@@ -41,16 +41,16 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <RainbowKitClientProvider>
-            <WalletPersistenceProvider>
-              <ClientWrapper>
+          <ClientWrapper>
+            <RainbowKitClientProvider>
+              <WalletPersistenceProvider>
                 <div className="flex flex-col min-h-screen">
                   {children}
                 </div>
-              </ClientWrapper>
-            </WalletPersistenceProvider>
-            <ToasterProvider />
-          </RainbowKitClientProvider>
+                <ToasterProvider />
+              </WalletPersistenceProvider>
+            </RainbowKitClientProvider>
+          </ClientWrapper>
         </ThemeProvider>
       </body>
     </html>
