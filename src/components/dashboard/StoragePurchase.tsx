@@ -11,9 +11,9 @@ import { useAccount, useWalletClient, useChainId, useSwitchChain } from "wagmi";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { base } from "wagmi/chains";
 
-// USDT Contract address on Base network (USDbC)
-// Verified from https://basescan.org/token/0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca
-const USDT_CONTRACT_ADDRESS = "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA";
+// Bridged USDT Contract address on Base network
+// Verified from https://basescan.org/token/0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2
+const USDT_CONTRACT_ADDRESS = "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2";
 
 // Default decimals for USDT on Base
 const DEFAULT_DECIMALS = 6;
