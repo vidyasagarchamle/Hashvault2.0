@@ -8,6 +8,10 @@ import fetch from 'node-fetch';
 // Temporary directory for storing chunks
 const TEMP_DIR = path.join(os.tmpdir(), 'hashvault-uploads');
 
+// New way to configure route options in Next.js App Router
+export const dynamic = 'force-dynamic';
+export const maxDuration = 120; // Allow up to 2 minutes for finalization
+
 export async function POST(request: NextRequest) {
   try {
     // Parse the form data
@@ -121,13 +125,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// Increase the body size limit for this route
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '1mb', // Metadata only, not the actual file
-    },
-  },
-}; 
+} 

@@ -11,6 +11,10 @@ if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
+// New way to configure route options in Next.js App Router
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     // Check if the request is multipart/form-data
@@ -75,13 +79,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// Increase the body size limit for this route
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-  },
-}; 
+} 

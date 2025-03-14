@@ -6,13 +6,8 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['formidable'],
   },
-  // Increase API body size limit to handle large file uploads
-  api: {
-    bodyParser: {
-      sizeLimit: '500mb', // Set to match the free storage limit
-    },
-    responseLimit: '500mb',
-  },
+  // Note: The api.bodyParser config is no longer needed in Next.js App Router
+  // Instead, we use route segment config exports in each route.ts file
 };
 
 module.exports = nextConfig; 
