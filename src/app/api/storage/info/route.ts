@@ -9,8 +9,12 @@ export const dynamic = 'force-dynamic';
 // Set a timeout for the entire route
 export const maxDuration = 5; // Reduced from 10 to 5 seconds
 
-// Cache the response for 30 seconds
-export const revalidate = 30;
+// Cache the response for 60 seconds
+export const revalidate = 60;
+
+// In-memory cache for storage info
+const storageInfoCache = new Map<string, { data: any, timestamp: number }>();
+const CACHE_TTL = 60 * 1000; // 60 seconds
 
 export async function GET(req: Request) {
   try {
@@ -26,6 +30,15 @@ export async function GET(req: Request) {
     // Clean up the wallet address (remove any "Bearer " prefix if present)
     const walletAddress = authHeader.replace('Bearer ', '').toLowerCase();
     console.log('Processing request for wallet:', walletAddress);
+
+    // Check in-memory cache first
+    const cacheKey = `storage_info:${walletAddress}`;
+    const cachedData = storageInfoCache.get(cacheKey);
+    
+    if (cachedData && (Date.now() - cachedData.timestamp) < CACHE_TTL) {
+      console.log('Returning cached storage info for wallet:', walletAddress);
+      return NextResponse.json(cachedData.data);
+    }
 
     // Connect to database with retries
     let retries = 2; // Reduced from 3 to 2
@@ -60,7 +73,11 @@ export async function GET(req: Request) {
     let user;
     try {
       console.log('Looking up user in database...');
-      user = await User.findOne({ walletAddress }).lean(); // Added .lean() for better performance
+      // Use lean() for better performance and projection to only get the fields we need
+      user = await User.findOne(
+        { walletAddress }, 
+        'totalStorageUsed totalStoragePurchased totalAvailableStorage'
+      ).lean();
       console.log('User lookup result:', user ? 'Found' : 'Not found');
     } catch (error: any) {
       console.error('User lookup error:', error);
@@ -84,12 +101,20 @@ export async function GET(req: Request) {
         await newUser.save();
         console.log('New user created successfully');
 
-        return NextResponse.json({
+        const responseData = {
           totalStorageUsed: 0,
           totalStoragePurchased: 0,
           totalAvailableStorage: FREE_STORAGE_LIMIT,
           remainingStorage: FREE_STORAGE_LIMIT,
+        };
+        
+        // Cache the response
+        storageInfoCache.set(cacheKey, {
+          data: responseData,
+          timestamp: Date.now()
         });
+
+        return NextResponse.json(responseData);
       } catch (error: any) {
         console.error('User creation error:', error);
         return NextResponse.json(
@@ -104,19 +129,22 @@ export async function GET(req: Request) {
     const totalStorageUsed = user.totalStorageUsed || 0;
     const remainingStorage = Math.max(0, totalAvailableStorage - totalStorageUsed);
 
-    console.log('Returning storage info:', {
+    const responseData = {
       totalStorageUsed,
       totalStoragePurchased: user.totalStoragePurchased || 0,
       totalAvailableStorage,
       remainingStorage,
+    };
+
+    console.log('Returning storage info:', responseData);
+    
+    // Cache the response
+    storageInfoCache.set(cacheKey, {
+      data: responseData,
+      timestamp: Date.now()
     });
 
-    return NextResponse.json({
-      totalStorageUsed,
-      totalStoragePurchased: user.totalStoragePurchased || 0,
-      totalAvailableStorage,
-      remainingStorage,
-    });
+    return NextResponse.json(responseData);
   } catch (error: any) {
     console.error("Storage info error:", error);
     return NextResponse.json(

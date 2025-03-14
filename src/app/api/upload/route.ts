@@ -4,6 +4,42 @@ import { connectToDatabase } from '@/lib/mongodb';
 import FileModel from '@/models/File';
 import { User } from '@/models/User';
 
+// Set a timeout for the entire route
+export const maxDuration = 10;
+
+// Cache GET responses for 30 seconds
+export const revalidate = 30;
+
+// In-memory cache for file listings
+const fileListCache = new Map<string, { data: any, timestamp: number }>();
+const CACHE_TTL = 30 * 1000; // 30 seconds
+
+// Database connection promise
+let dbConnectionPromise: Promise<any> | null = null;
+
+// Ensure database connection
+async function ensureDbConnection() {
+  if (!dbConnectionPromise) {
+    console.debug('Creating new database connection promise');
+    dbConnectionPromise = connectToDatabase()
+      .catch(error => {
+        console.error('Database connection error:', error);
+        dbConnectionPromise = null;
+        throw error;
+      });
+  }
+  
+  try {
+    await dbConnectionPromise;
+    console.debug('Database connected successfully');
+    return true;
+  } catch (error) {
+    console.error('Database connection failed:', error);
+    dbConnectionPromise = null;
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
@@ -22,8 +58,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.debug('Connecting to MongoDB...');
-    await connectToDatabase();
-    console.debug('MongoDB connected successfully');
+    const connected = await ensureDbConnection();
+    if (!connected) {
+      return NextResponse.json({ error: 'Failed to connect to database' }, { status: 503 });
+    }
 
     console.debug('Creating file record:', { fileName, cid, size, mimeType, walletAddress });
     const file = await FileModel.create({
@@ -58,6 +96,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update user storage' }, { status: 500 });
     }
 
+    // Invalidate cache for this user
+    const cacheKey = `files:${walletAddress}`;
+    fileListCache.delete(cacheKey);
+
     console.debug('File metadata stored successfully:', file);
     return NextResponse.json({ success: true, file });
   } catch (error) {
@@ -82,7 +124,6 @@ export async function GET(req: Request) {
     const walletAddress = searchParams.get('walletAddress');
 
     console.log("API GET request for files with params:", Object.fromEntries(searchParams.entries()));
-    console.log("Headers:", Object.fromEntries(req.headers));
 
     if (!walletAddress) {
       console.debug('No wallet address provided in request');
@@ -92,9 +133,20 @@ export async function GET(req: Request) {
       );
     }
 
+    // Check cache first
+    const cacheKey = `files:${walletAddress}`;
+    const cachedData = fileListCache.get(cacheKey);
+    
+    if (cachedData && (Date.now() - cachedData.timestamp) < CACHE_TTL) {
+      console.debug(`Returning cached files (${cachedData.data.length}) for wallet:`, walletAddress);
+      return NextResponse.json({ success: true, files: cachedData.data });
+    }
+
     console.debug('Connecting to MongoDB...');
-    await connectToDatabase();
-    console.debug('MongoDB connected successfully');
+    const connected = await ensureDbConnection();
+    if (!connected) {
+      return NextResponse.json({ error: 'Failed to connect to database' }, { status: 503 });
+    }
 
     console.debug('Fetching files for wallet:', walletAddress);
     const files = await FileModel.find({ walletAddress })
@@ -126,6 +178,12 @@ export async function GET(req: Request) {
       };
     });
 
+    // Cache the results
+    fileListCache.set(cacheKey, {
+      data: transformedFiles,
+      timestamp: Date.now()
+    });
+
     console.debug(`Found ${transformedFiles.length} files for wallet ${walletAddress}`);
     return NextResponse.json({ success: true, files: transformedFiles });
   } catch (error) {
@@ -154,7 +212,10 @@ export async function DELETE(req: Request) {
       );
     }
 
-    await connectToDatabase();
+    const connected = await ensureDbConnection();
+    if (!connected) {
+      return NextResponse.json({ error: 'Failed to connect to database' }, { status: 503 });
+    }
 
     const file = await FileModel.findOne({ cid, walletAddress });
     if (!file) {
@@ -171,6 +232,10 @@ export async function DELETE(req: Request) {
       { walletAddress },
       { $inc: { totalStorageUsed: -sizeInBytes } }
     );
+
+    // Invalidate cache for this user
+    const cacheKey = `files:${walletAddress}`;
+    fileListCache.delete(cacheKey);
 
     return NextResponse.json({ success: true });
   } catch (error) {

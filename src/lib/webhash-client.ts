@@ -59,8 +59,8 @@ export class WebHashClient {
   private static CACHE_DURATION = 5000; // 5 seconds cache
 
   private constructor() {
-    this.apiUrl = 'http://52.38.175.117:5000';
-    this.apiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
+    this.apiUrl = process.env.NEXT_PUBLIC_WEBHASH_API_URL || 'http://52.38.175.117:5000';
+    this.apiKey = process.env.NEXT_PUBLIC_WEBHASH_API_KEY || '';
     this.cache = new Map();
   }
 
@@ -166,24 +166,55 @@ export class WebHashClient {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Upload to WebHash IPFS endpoint
+      // Upload to WebHash IPFS endpoint with retry logic
       console.debug('Uploading to WebHash IPFS endpoint...');
-      const response = await fetch(`${this.apiUrl}/upload`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('WebHash upload failed:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText
-        });
-        throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+      
+      // Retry logic
+      let retries = 3;
+      let response;
+      let lastError;
+      
+      while (retries > 0) {
+        try {
+          response = await fetch(`${this.apiUrl}/upload`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`
+            },
+            body: formData,
+            // Add a longer timeout
+            signal: AbortSignal.timeout(30000) // 30 second timeout
+          });
+          
+          // If successful, break out of retry loop
+          if (response.ok) break;
+          
+          // If we got a response but it's an error, handle based on status
+          const errorText = await response.text();
+          lastError = new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+          
+          // Don't retry for client errors (4xx)
+          if (response.status >= 400 && response.status < 500) {
+            throw lastError;
+          }
+          
+        } catch (error) {
+          console.error(`Upload attempt failed (${retries} retries left):`, error);
+          lastError = error;
+        }
+        
+        retries--;
+        if (retries > 0) {
+          // Wait before retrying (exponential backoff)
+          const waitTime = (3 - retries) * 2000; // 2s, 4s, 6s
+          console.debug(`Retrying upload in ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
+      
+      // If we've exhausted retries and still have an error
+      if (!response || !response.ok) {
+        throw lastError || new Error('Upload failed after multiple retries');
       }
 
       const output = await response.json();
@@ -202,28 +233,58 @@ export class WebHashClient {
         mimeType: file.type || this.guessMimeType(file.name)
       });
 
-      const metadataResponse = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileName: file.name,
-          cid: output.cid,
-          size: file.size.toString(),
-          mimeType: file.type || this.guessMimeType(file.name),
-          walletAddress,
-        }),
-      });
-
-      if (!metadataResponse.ok) {
-        const errorData = await metadataResponse.json();
-        console.error('Metadata storage failed:', {
-          status: metadataResponse.status,
-          statusText: metadataResponse.statusText,
-          error: errorData
-        });
-        throw new Error(`Failed to store file metadata: ${JSON.stringify(errorData)}`);
+      // Retry logic for metadata storage
+      retries = 3;
+      let metadataResponse;
+      
+      while (retries > 0) {
+        try {
+          metadataResponse = await fetch('/api/upload', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${walletAddress}`
+            },
+            body: JSON.stringify({
+              fileName: file.name,
+              cid: output.cid,
+              size: file.size.toString(),
+              mimeType: file.type || this.guessMimeType(file.name),
+              walletAddress,
+            }),
+            // Add a longer timeout
+            signal: AbortSignal.timeout(15000) // 15 second timeout
+          });
+          
+          // If successful, break out of retry loop
+          if (metadataResponse.ok) break;
+          
+          // If we got a response but it's an error
+          const errorData = await metadataResponse.json();
+          lastError = new Error(`Failed to store file metadata: ${JSON.stringify(errorData)}`);
+          
+          // Don't retry for client errors (4xx)
+          if (metadataResponse.status >= 400 && metadataResponse.status < 500) {
+            throw lastError;
+          }
+          
+        } catch (error) {
+          console.error(`Metadata storage attempt failed (${retries} retries left):`, error);
+          lastError = error;
+        }
+        
+        retries--;
+        if (retries > 0) {
+          // Wait before retrying (exponential backoff)
+          const waitTime = (3 - retries) * 1000; // 1s, 2s, 3s
+          console.debug(`Retrying metadata storage in ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
+      
+      // If we've exhausted retries and still have an error
+      if (!metadataResponse || !metadataResponse.ok) {
+        throw lastError || new Error('Metadata storage failed after multiple retries');
       }
 
       const metadata = await metadataResponse.json();
