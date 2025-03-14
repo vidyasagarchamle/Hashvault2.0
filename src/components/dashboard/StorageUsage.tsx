@@ -35,7 +35,7 @@ const DEFAULT_STORAGE_INFO: StorageInfo = {
 export default function StorageUsage() {
   const { user } = useAuth();
   const { address } = useAccount();
-  const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
+  const [storageInfo, setStorageInfo] = useState<StorageInfo>(DEFAULT_STORAGE_INFO);
   const [loading, setLoading] = useState(true);
   const [showPurchase, setShowPurchase] = useState(false);
   const [apiError, setApiError] = useState(false);
@@ -56,8 +56,6 @@ export default function StorageUsage() {
       console.log("No wallet address available for storage info");
       if (isMounted.current) {
         setLoading(false);
-        // Set default storage info if we don't have a wallet address
-        setStorageInfo(DEFAULT_STORAGE_INFO);
       }
       return;
     }
@@ -96,19 +94,18 @@ export default function StorageUsage() {
       
       if (isMounted.current) {
         setStorageInfo({
-          used: data.totalStorageUsed,
-          total: data.totalAvailableStorage,
-          remaining: data.remainingStorage,
-          purchased: data.totalStoragePurchased
+          used: data.totalStorageUsed || 0,
+          total: data.totalAvailableStorage || FREE_STORAGE_LIMIT,
+          remaining: data.remainingStorage || FREE_STORAGE_LIMIT,
+          purchased: data.totalStoragePurchased || 0
         });
         setApiError(false);
       }
     } catch (error) {
       console.error('Error fetching storage info:', error);
       
-      // Set mock data as fallback
+      // Keep existing data if we have it, otherwise use default
       if (isMounted.current) {
-        setStorageInfo(DEFAULT_STORAGE_INFO);
         setApiError(true);
       }
     } finally {
@@ -157,36 +154,21 @@ export default function StorageUsage() {
   if (!walletAddress) {
     return (
       <Card className="p-4">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Please connect your wallet to view storage information.
         </p>
       </Card>
     );
   }
 
-  if (loading && !storageInfo) {
-    return (
-      <Card className="p-4">
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-          <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded"></div>
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
-        </div>
-      </Card>
-    );
-  }
-
-  // Use default storage info if storageInfo is still null
-  const info = storageInfo || DEFAULT_STORAGE_INFO;
-  
-  const usagePercentage = (info.used / info.total) * 100;
-  const freeStorageUsed = Math.min(info.used, FREE_STORAGE_LIMIT);
+  // Calculate usage percentages
+  const usagePercentage = (storageInfo.used / storageInfo.total) * 100;
+  const freeStorageUsed = Math.min(storageInfo.used, FREE_STORAGE_LIMIT);
   const freeStoragePercentage = (freeStorageUsed / FREE_STORAGE_LIMIT) * 100;
 
   // Debug info
   console.log("Storage display info:", {
     storageInfo,
-    info,
     usagePercentage,
     freeStorageUsed,
     freeStoragePercentage,
@@ -217,41 +199,61 @@ export default function StorageUsage() {
           </div>
         </div>
 
-        {apiError && (
-          <div className="text-xs text-amber-600 dark:text-amber-400 mb-2">
-            Using estimated storage data. API connection failed.
+        {loading ? (
+          <div className="animate-pulse space-y-4">
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
           </div>
-        )}
+        ) : (
+          <>
+            {apiError && (
+              <div className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                Using estimated storage data. API connection failed.
+              </div>
+            )}
 
-        <div className="space-y-2">
-          <div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Free Storage ({formatBytes(FREE_STORAGE_LIMIT)})</p>
-            <Progress 
-              value={freeStoragePercentage} 
-              className={cn(
-                "h-2",
-                freeStoragePercentage > 90 ? "[&>div]:bg-red-600" : "[&>div]:bg-blue-600"
+            <div className="space-y-2">
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Free Storage ({formatBytes(FREE_STORAGE_LIMIT)})
+                </p>
+                <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2 w-full overflow-hidden">
+                  <div 
+                    className={cn(
+                      "h-full rounded-full transition-all",
+                      freeStoragePercentage > 90 ? "bg-red-600" : "bg-blue-600"
+                    )}
+                    style={{ width: `${Math.min(100, Math.max(0, freeStoragePercentage))}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {storageInfo.purchased > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Purchased Storage ({formatBytes(storageInfo.purchased)})
+                  </p>
+                  <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2 w-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-600 rounded-full transition-all"
+                      style={{ 
+                        width: `${Math.min(100, Math.max(0, (storageInfo.used - freeStorageUsed) / storageInfo.purchased * 100))}%` 
+                      }}
+                    ></div>
+                  </div>
+                </div>
               )}
-            />
-          </div>
-
-          {info.purchased > 0 && (
-            <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Purchased Storage ({formatBytes(info.purchased)})</p>
-              <Progress 
-                value={(info.used - freeStorageUsed) / info.purchased * 100} 
-                className="h-2"
-              />
             </div>
-          )}
-        </div>
 
-        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-          <span>
-            {formatBytes(info.remaining)} remaining
-          </span>
-          <span>{Math.round(usagePercentage)}% used</span>
-        </div>
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+              <span>
+                {formatBytes(storageInfo.remaining)} remaining
+              </span>
+              <span>{Math.round(usagePercentage)}% used</span>
+            </div>
+          </>
+        )}
 
         <Button
           variant="default"
