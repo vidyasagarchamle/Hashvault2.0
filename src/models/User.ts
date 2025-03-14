@@ -1,5 +1,20 @@
-import mongoose from 'mongoose';
+import mongoose, { Document } from 'mongoose';
 import { FREE_STORAGE_LIMIT } from '@/lib/constants';
+
+export interface IUser extends Document {
+  walletAddress: string;
+  totalStorageUsed: number;
+  totalStoragePurchased: number;
+  totalAvailableStorage: number;
+  lastStorageCheck: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  name?: string;
+  email?: string;
+  image?: string;
+  remainingStorage: number;
+  hasEnoughStorage(requiredSize: number): boolean;
+}
 
 const userSchema = new mongoose.Schema({
   walletAddress: {
@@ -29,6 +44,10 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  totalAvailableStorage: {
+    type: Number,
+    default: 0,
+  },
   lastStorageCheck: {
     type: Date,
     default: Date.now,
@@ -41,6 +60,8 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+}, {
+  timestamps: true
 });
 
 // Virtual for total available storage
@@ -49,13 +70,13 @@ userSchema.virtual('totalAvailableStorage').get(function() {
 });
 
 // Virtual for remaining storage
-userSchema.virtual('remainingStorage').get(function() {
+userSchema.virtual('remainingStorage').get(function(this: IUser) {
   return Math.max(0, this.totalAvailableStorage - this.totalStorageUsed);
 });
 
 // Method to check if user has enough storage
-userSchema.methods.hasEnoughStorage = function(requiredBytes: number): boolean {
-  return this.remainingStorage >= requiredBytes;
+userSchema.methods.hasEnoughStorage = function(requiredSize: number): boolean {
+  return this.remainingStorage >= requiredSize;
 };
 
 // Method to update storage usage
@@ -70,4 +91,4 @@ if (mongoose.models.User) {
   delete mongoose.models.User;
 }
 
-export const User = mongoose.model('User', userSchema); 
+export const User = mongoose.model<IUser>('User', userSchema); 
