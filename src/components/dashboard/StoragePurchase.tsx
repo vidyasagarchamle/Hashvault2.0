@@ -11,12 +11,15 @@ import { useAccount, useWalletClient, useChainId, useSwitchChain, useReadContrac
 import { useAuth } from "@/lib/hooks/use-auth";
 import { base } from "wagmi/chains";
 
-// USDT Contract address on Base network - Updated to correct address
-// Base USDT address: https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
-const USDT_CONTRACT_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+// USDT Contract address on Base network - Verified USDT address
+// Base USDT address: https://basescan.org/token/0x4ed4e862860bed51a9570b96d89af5e1b0efefed
+const USDT_CONTRACT_ADDRESS = "0x4ed4E862860bED51A9570B96d89aF5E1B0EfEfEd";
 
 // Default decimals for USDT on Base
 const DEFAULT_DECIMALS = 6;
+
+// Direct USDT amount to charge (20 USDT)
+const USDT_AMOUNT = "20";
 
 // ERC20 ABI with symbol and decimals functions
 const ERC20_ABI = [
@@ -130,7 +133,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
     }
 
     // Verify we're using USDT
-    if (displaySymbol !== 'USDT' && displaySymbol !== 'USDbC') {
+    if (displaySymbol !== 'USDT') {
       toast.error(`Wrong token detected: ${displaySymbol}. Expected USDT.`);
       return;
     }
@@ -140,10 +143,10 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
       
       console.log(`Using token decimals: ${tokenDecimalsValue}`);
       
-      // Convert USD price to USDT amount with proper decimals
-      const usdtAmount = parseUnits(STORAGE_PLAN_PRICE.toString(), tokenDecimalsValue);
+      // Use direct USDT amount (20 USDT)
+      const usdtAmount = parseUnits(USDT_AMOUNT, tokenDecimalsValue);
       
-      console.log(`Sending ${STORAGE_PLAN_PRICE} ${displaySymbol} on Base network with ${tokenDecimalsValue} decimals`);
+      console.log(`Sending ${USDT_AMOUNT} ${displaySymbol} on Base network with ${tokenDecimalsValue} decimals`);
       
       // Send USDT transaction using the ERC20 transfer function
       const txHash = await walletClient.writeContract({
@@ -214,7 +217,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
               <p className="text-sm text-gray-500">Additional storage space</p>
             </div>
             <div className="text-right">
-              <p className="text-lg font-bold">${STORAGE_PLAN_PRICE}</p>
+              <p className="text-lg font-bold">{USDT_AMOUNT} USDT</p>
               <p className="text-xs text-gray-500">One-time payment</p>
             </div>
           </div>
@@ -238,7 +241,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
               onClick={handlePurchase}
               disabled={loading || !ready || !isConnected || !address || !walletClient || !isCorrectNetwork}
             >
-              {loading ? 'Processing...' : `Purchase Now with ${displaySymbol}`}
+              {loading ? 'Processing...' : `Purchase Now with ${USDT_AMOUNT} USDT`}
             </Button>
           )}
         </div>
@@ -247,7 +250,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
           <p>• Storage space is added to your account immediately after purchase</p>
           <p>• One-time payment, no recurring fees</p>
           <p>• Purchase multiple plans if you need more space</p>
-          <p>• Payment will be processed in {displaySymbol} on the Base network</p>
+          <p>• Payment will be processed in {USDT_AMOUNT} USDT on the Base network</p>
           <p className="font-medium text-blue-600 dark:text-blue-400">• You must be connected to Base network to make a payment</p>
         </div>
       </div>
