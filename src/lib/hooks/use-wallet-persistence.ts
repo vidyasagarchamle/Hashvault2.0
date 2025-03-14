@@ -4,6 +4,7 @@ import { useAccount, useConnect } from 'wagmi';
 /**
  * Custom hook to handle wallet persistence
  * This hook will automatically reconnect to the wallet when the page is refreshed
+ * Updated for RainbowKit v2 and Wagmi v2
  */
 export function useWalletPersistence() {
   const { isConnected } = useAccount();
@@ -29,14 +30,22 @@ export function useWalletPersistence() {
           
           if (connector) {
             // Try to reconnect using the stored connector
-            await connect({ connector });
-            console.log('Reconnection successful');
+            try {
+              await connect({ connector });
+              console.log('Reconnection successful');
+            } catch (connectError) {
+              console.warn('Could not automatically reconnect:', connectError);
+              // Clear the stored wallet if reconnection fails
+              localStorage.removeItem('lastConnectedWallet');
+            }
           } else {
             console.log('Connector not found for:', lastConnectedWallet);
+            // Clear invalid connector from storage
+            localStorage.removeItem('lastConnectedWallet');
           }
         }
       } catch (error) {
-        console.error('Error reconnecting to wallet:', error);
+        console.error('Error in reconnection process:', error);
       } finally {
         setReconnectAttempted(true);
       }
@@ -45,7 +54,7 @@ export function useWalletPersistence() {
     // Add a small delay to ensure the connectors are ready
     const timer = setTimeout(() => {
       attemptReconnect();
-    }, 500);
+    }, 1000); // Increased delay to ensure RainbowKit is fully initialized
 
     return () => clearTimeout(timer);
   }, [isConnected, connect, connectors, reconnectAttempted]);
@@ -60,6 +69,14 @@ export function useWalletPersistence() {
       }
     }
   }, [isConnected, connectors]);
+
+  // Listen for wallet disconnection events
+  useEffect(() => {
+    if (!isConnected) {
+      // If disconnected, update the UI accordingly
+      console.log('Wallet disconnected');
+    }
+  }, [isConnected]);
 
   return { isConnected };
 } 
