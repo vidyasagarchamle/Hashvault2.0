@@ -1,6 +1,15 @@
 import mongoose, { Document } from 'mongoose';
 import { FREE_STORAGE_LIMIT } from '@/lib/constants';
 
+// Define payment record interface
+export interface IPaymentRecord {
+  transactionHash: string;
+  paymentMethod: string;
+  network: string;
+  amount: number;
+  timestamp: Date;
+}
+
 export interface IUser extends Document {
   walletAddress: string;
   totalStorageUsed: number;
@@ -12,9 +21,33 @@ export interface IUser extends Document {
   name?: string;
   email?: string;
   image?: string;
+  payments: IPaymentRecord[];
   remainingStorage: number;
   hasEnoughStorage(requiredSize: number): boolean;
 }
+
+const paymentRecordSchema = new mongoose.Schema({
+  transactionHash: {
+    type: String,
+    required: true,
+  },
+  paymentMethod: {
+    type: String,
+    default: 'USDT',
+  },
+  network: {
+    type: String,
+    default: 'Base',
+  },
+  amount: {
+    type: Number,
+    required: true,
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now,
+  },
+});
 
 const userSchema = new mongoose.Schema({
   walletAddress: {
@@ -55,6 +88,10 @@ const userSchema = new mongoose.Schema({
   lastStorageCheck: {
     type: Date,
     default: Date.now,
+  },
+  payments: {
+    type: [paymentRecordSchema],
+    default: [],
   },
 }, {
   timestamps: true,

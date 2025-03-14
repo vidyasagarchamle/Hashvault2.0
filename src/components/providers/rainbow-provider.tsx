@@ -2,7 +2,7 @@
 
 import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowkit';
 import { WagmiConfig } from 'wagmi';
-import { mainnet } from 'wagmi/chains';
+import { mainnet, base } from 'wagmi/chains';
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTheme } from 'next-themes';
@@ -16,7 +16,7 @@ const projectId = 'c6c9bacd35167d2e3c2ed97d3a51a7c0';
 const config = getDefaultConfig({
   appName: 'HashVault',
   projectId: projectId,
-  chains: [mainnet],
+  chains: [base, mainnet],
   ssr: true,
 });
 

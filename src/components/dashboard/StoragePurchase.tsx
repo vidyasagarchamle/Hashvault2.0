@@ -6,9 +6,26 @@ import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { STORAGE_PLAN_SIZE, STORAGE_PLAN_PRICE } from '@/lib/constants';
 import { storageUpdateEvent, STORAGE_UPDATED } from "./StorageUsage";
-import { parseEther } from "viem";
+import { parseUnits } from "viem";
 import { useAccount, useWalletClient } from "wagmi";
 import { useAuth } from "@/lib/hooks/use-auth";
+
+// USDT Contract address on Base network
+const USDT_CONTRACT_ADDRESS = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"; // Base USDT address
+
+// ERC20 transfer function ABI
+const ERC20_TRANSFER_ABI = [
+  {
+    "inputs": [
+      { "name": "recipient", "type": "address" },
+      { "name": "amount", "type": "uint256" }
+    ],
+    "name": "transfer",
+    "outputs": [{ "name": "", "type": "bool" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+];
 
 interface StoragePurchaseProps {
   onClose: () => void;
@@ -19,18 +36,6 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
   const [loading, setLoading] = useState(false);
-  const [ethPrice, setEthPrice] = useState<number | null>(null);
-
-  const fetchEthPrice = async () => {
-    try {
-      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
-      const data = await response.json();
-      return data.ethereum.usd;
-    } catch (error) {
-      console.error('Error fetching ETH price:', error);
-      return null;
-    }
-  };
 
   const handlePurchase = async () => {
     if (!ready || !isConnected || !address || !walletClient) {
@@ -41,23 +46,24 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
     try {
       setLoading(true);
       
-      // Get current ETH price
-      const currentEthPrice = await fetchEthPrice();
-      if (!currentEthPrice) {
-        throw new Error('Failed to fetch ETH price');
-      }
+      // USDT has 6 decimals on Base
+      const usdtDecimals = 6;
       
-      // Convert USD price to ETH
-      const ethAmount = STORAGE_PLAN_PRICE / currentEthPrice;
-      console.log(`Converting $${STORAGE_PLAN_PRICE} to ETH: ${ethAmount} ETH`);
+      // Convert USD price to USDT amount with proper decimals
+      // For USDT, 1 USDT = 1 USD, so the conversion is straightforward
+      const usdtAmount = parseUnits(STORAGE_PLAN_PRICE.toString(), usdtDecimals);
       
-      // Convert ETH amount to Wei
-      const priceInWei = parseEther(ethAmount.toFixed(18));
+      console.log(`Sending ${STORAGE_PLAN_PRICE} USDT`);
       
-      // Send transaction
-      const txHash = await walletClient.sendTransaction({
-        to: process.env.NEXT_PUBLIC_PAYMENT_ADDRESS as `0x${string}`,
-        value: priceInWei,
+      // Send USDT transaction using the ERC20 transfer function
+      const txHash = await walletClient.writeContract({
+        address: USDT_CONTRACT_ADDRESS as `0x${string}`,
+        abi: ERC20_TRANSFER_ABI,
+        functionName: 'transfer',
+        args: [
+          process.env.NEXT_PUBLIC_PAYMENT_ADDRESS as `0x${string}`,
+          usdtAmount
+        ]
       });
       
       toast.info('Transaction submitted, waiting for confirmation...');
@@ -70,7 +76,9 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
           'Authorization': address
         },
         body: JSON.stringify({
-          transactionHash: txHash
+          transactionHash: txHash,
+          paymentMethod: 'USDT',
+          network: 'Base'
         })
       });
 
@@ -134,7 +142,8 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
           <p>• Storage space is added to your account immediately after purchase</p>
           <p>• One-time payment, no recurring fees</p>
           <p>• Purchase multiple plans if you need more space</p>
-          <p>• Payment will be processed in ETH at current market rate</p>
+          <p>• Payment will be processed in USDT on the Base network</p>
+          <p>• Make sure your wallet is connected to the Base network</p>
         </div>
       </div>
     </Card>
