@@ -162,142 +162,263 @@ export class WebHashClient {
         walletAddress
       });
 
-      // Create FormData for the file
-      const formData = new FormData();
-      formData.append('file', file);
-
-      // Upload to WebHash IPFS endpoint through our proxy API with retry logic
-      console.debug('Uploading to WebHash IPFS endpoint via proxy...');
+      // For small files (< 10MB), use direct upload
+      if (file.size < 10 * 1024 * 1024) {
+        return this.directUpload(file, walletAddress, onProgress);
+      }
       
-      // Retry logic
+      // For larger files, use chunked upload
+      return this.chunkedUpload(file, walletAddress, onProgress);
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw error;
+    }
+  }
+  
+  private async directUpload(file: File, walletAddress: string, onProgress?: (progress: number) => void): Promise<any> {
+    // Create FormData for the file
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Upload to WebHash IPFS endpoint through our proxy API with retry logic
+    console.debug('Uploading to WebHash IPFS endpoint via proxy...');
+    
+    // Retry logic
+    let retries = 3;
+    let response;
+    let lastError;
+    
+    while (retries > 0) {
+      try {
+        // Use our own proxy API endpoint instead of direct external API call
+        response = await fetch(`/api/webhash/upload`, {
+          method: 'POST',
+          body: formData,
+          // Add a longer timeout
+          signal: AbortSignal.timeout(60000) // 60 second timeout
+        });
+        
+        // If successful, break out of retry loop
+        if (response.ok) break;
+        
+        // If we got a response but it's an error, handle based on status
+        const errorText = await response.text();
+        lastError = new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+        
+        // Don't retry for client errors (4xx)
+        if (response.status >= 400 && response.status < 500) {
+          throw lastError;
+        }
+        
+      } catch (error) {
+        console.error(`Upload attempt failed (${retries} retries left):`, error);
+        lastError = error;
+      }
+      
+      retries--;
+      if (retries > 0) {
+        // Wait before retrying (exponential backoff)
+        const waitTime = (3 - retries) * 2000; // 2s, 4s, 6s
+        console.debug(`Retrying upload in ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+    
+    // If we've exhausted retries and still have an error
+    if (!response || !response.ok) {
+      throw lastError || new Error('Upload failed after multiple retries');
+    }
+
+    const output = await response.json();
+    console.debug('WebHash upload response:', output);
+    
+    if (onProgress) {
+      onProgress(100);
+    }
+    
+    // Continue with the rest of the upload process
+    return this.finalizeUpload(output, file, walletAddress);
+  }
+  
+  private async chunkedUpload(file: File, walletAddress: string, onProgress?: (progress: number) => void): Promise<any> {
+    // Chunk size: 5MB
+    const CHUNK_SIZE = 5 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    let uploadedChunks = 0;
+    let uploadId = Date.now().toString(); // Simple unique ID for this upload
+    
+    console.debug(`Starting chunked upload with ${totalChunks} chunks of ${CHUNK_SIZE / (1024 * 1024)}MB each`);
+    
+    // Create array to store chunk responses
+    const chunkResponses = [];
+    
+    // Process each chunk
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const start = chunkIndex * CHUNK_SIZE;
+      const end = Math.min(file.size, start + CHUNK_SIZE);
+      const chunk = file.slice(start, end);
+      
+      // Create FormData for the chunk
+      const formData = new FormData();
+      formData.append('file', chunk, `${file.name}.part${chunkIndex}`);
+      formData.append('chunkIndex', chunkIndex.toString());
+      formData.append('totalChunks', totalChunks.toString());
+      formData.append('uploadId', uploadId);
+      formData.append('fileName', file.name);
+      
+      // Retry logic for each chunk
       let retries = 3;
-      let response;
+      let chunkResponse;
       let lastError;
       
       while (retries > 0) {
         try {
-          // Use our own proxy API endpoint instead of direct external API call
-          response = await fetch(`/api/webhash/upload`, {
+          // Upload chunk
+          chunkResponse = await fetch(`/api/webhash/upload-chunk`, {
             method: 'POST',
             body: formData,
-            // Add a longer timeout
-            signal: AbortSignal.timeout(45000) // 45 second timeout
+            signal: AbortSignal.timeout(30000) // 30 second timeout per chunk
           });
           
-          // If successful, break out of retry loop
-          if (response.ok) break;
+          if (chunkResponse.ok) break;
           
-          // If we got a response but it's an error, handle based on status
-          const errorText = await response.text();
-          lastError = new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+          const errorText = await chunkResponse.text();
+          lastError = new Error(`Chunk upload failed: ${chunkResponse.status} ${chunkResponse.statusText} - ${errorText}`);
           
-          // Don't retry for client errors (4xx)
-          if (response.status >= 400 && response.status < 500) {
+          if (chunkResponse.status >= 400 && chunkResponse.status < 500) {
             throw lastError;
           }
-          
         } catch (error) {
-          console.error(`Upload attempt failed (${retries} retries left):`, error);
+          console.error(`Chunk upload failed (${retries} retries left):`, error);
           lastError = error;
         }
         
         retries--;
         if (retries > 0) {
-          // Wait before retrying (exponential backoff)
-          const waitTime = (3 - retries) * 2000; // 2s, 4s, 6s
-          console.debug(`Retrying upload in ${waitTime}ms...`);
+          const waitTime = (3 - retries) * 1000;
           await new Promise(resolve => setTimeout(resolve, waitTime));
         }
       }
       
-      // If we've exhausted retries and still have an error
-      if (!response || !response.ok) {
-        throw lastError || new Error('Upload failed after multiple retries');
+      if (!chunkResponse || !chunkResponse.ok) {
+        throw lastError || new Error(`Failed to upload chunk ${chunkIndex} after multiple retries`);
       }
-
-      const output = await response.json();
-      console.debug('WebHash upload response:', output);
-
-      if (!output.cid) {
-        console.error('Invalid WebHash response:', output);
-        throw new Error('Invalid response from IPFS: Missing CID');
+      
+      const chunkResult = await chunkResponse.json();
+      chunkResponses.push(chunkResult);
+      
+      // Update progress
+      uploadedChunks++;
+      if (onProgress) {
+        // Calculate progress based on uploaded chunks
+        const progress = Math.floor((uploadedChunks / totalChunks) * 90); // Reserve 10% for finalization
+        onProgress(progress);
       }
+    }
+    
+    // All chunks uploaded, now finalize the upload
+    console.debug('All chunks uploaded, finalizing...');
+    
+    // Create FormData for finalization
+    const finalizeFormData = new FormData();
+    finalizeFormData.append('uploadId', uploadId);
+    finalizeFormData.append('fileName', file.name);
+    finalizeFormData.append('fileSize', file.size.toString());
+    finalizeFormData.append('fileType', file.type);
+    finalizeFormData.append('totalChunks', totalChunks.toString());
+    
+    // Retry logic for finalization
+    let retries = 3;
+    let finalizeResponse;
+    let lastError;
+    
+    while (retries > 0) {
+      try {
+        finalizeResponse = await fetch(`/api/webhash/finalize-upload`, {
+          method: 'POST',
+          body: finalizeFormData,
+          signal: AbortSignal.timeout(30000)
+        });
+        
+        if (finalizeResponse.ok) break;
+        
+        const errorText = await finalizeResponse.text();
+        lastError = new Error(`Finalization failed: ${finalizeResponse.status} ${finalizeResponse.statusText} - ${errorText}`);
+        
+        if (finalizeResponse.status >= 400 && finalizeResponse.status < 500) {
+          throw lastError;
+        }
+      } catch (error) {
+        console.error(`Finalization failed (${retries} retries left):`, error);
+        lastError = error;
+      }
+      
+      retries--;
+      if (retries > 0) {
+        const waitTime = (3 - retries) * 2000;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+    
+    if (!finalizeResponse || !finalizeResponse.ok) {
+      throw lastError || new Error('Failed to finalize upload after multiple retries');
+    }
+    
+    const output = await finalizeResponse.json();
+    console.debug('Finalized upload response:', output);
+    
+    if (onProgress) {
+      onProgress(100);
+    }
+    
+    // Continue with the rest of the upload process
+    return this.finalizeUpload(output, file, walletAddress);
+  }
+  
+  private async finalizeUpload(output: any, file: File, walletAddress: string): Promise<any> {
+    // Extract CID from the response
+    const cid = output.cid || output.hash;
+    if (!cid) {
+      throw new Error('No CID returned from WebHash API');
+    }
 
-      // Store metadata through our API
-      console.debug('Storing file metadata...', {
-        fileName: file.name,
-        cid: output.cid,
-        size: file.size,
-        mimeType: file.type || this.guessMimeType(file.name)
+    // Save metadata to our database
+    let metadataResponse;
+    try {
+      metadataResponse = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cid,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          walletAddress,
+        }),
       });
 
-      // Retry logic for metadata storage
-      retries = 3;
-      let metadataResponse;
-      
-      while (retries > 0) {
-        try {
-          metadataResponse = await fetch('/api/upload', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${walletAddress}`
-            },
-            body: JSON.stringify({
-              fileName: file.name,
-              cid: output.cid,
-              size: file.size.toString(),
-              mimeType: file.type || this.guessMimeType(file.name),
-              walletAddress,
-            }),
-            // Add a longer timeout
-            signal: AbortSignal.timeout(15000) // 15 second timeout
-          });
-          
-          // If successful, break out of retry loop
-          if (metadataResponse.ok) break;
-          
-          // If we got a response but it's an error
-          const errorData = await metadataResponse.json();
-          lastError = new Error(`Failed to store file metadata: ${JSON.stringify(errorData)}`);
-          
-          // Don't retry for client errors (4xx)
-          if (metadataResponse.status >= 400 && metadataResponse.status < 500) {
-            throw lastError;
-          }
-          
-        } catch (error) {
-          console.error(`Metadata storage attempt failed (${retries} retries left):`, error);
-          lastError = error;
-        }
-        
-        retries--;
-        if (retries > 0) {
-          // Wait before retrying (exponential backoff)
-          const waitTime = (3 - retries) * 1000; // 1s, 2s, 3s
-          console.debug(`Retrying metadata storage in ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-        }
-      }
-      
-      // If we've exhausted retries and still have an error
-      if (!metadataResponse || !metadataResponse.ok) {
-        throw lastError || new Error('Metadata storage failed after multiple retries');
+      if (!metadataResponse.ok) {
+        throw new Error(`Failed to save metadata: ${metadataResponse.statusText}`);
       }
 
-      const metadata = await metadataResponse.json();
-      console.debug('Metadata stored successfully:', metadata);
-      
-      if (onProgress) onProgress(100);
+      const metadataResult = await metadataResponse.json();
+      console.debug('Metadata saved:', metadataResult);
 
+      // Return combined result
       return {
-        ...metadata,
-        cid: output.cid
+        ...output,
+        metadata: metadataResult,
       };
-
-    } catch (error) {
-      console.error('Upload error:', error);
-      throw error;
+    } catch (error: any) {
+      console.error('Error saving metadata:', error);
+      // Even if metadata saving fails, return the IPFS result
+      // so the user knows the file was uploaded
+      return {
+        ...output,
+        metadataError: error.message,
+      };
     }
   }
 

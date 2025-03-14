@@ -10,6 +10,7 @@ import { storageUpdateEvent, STORAGE_UPDATED } from "@/components/dashboard/Stor
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useAccount } from "wagmi";
 import { getWalletAddressFromUser } from "@/lib/wallet-utils";
+import { useRouter } from 'next/navigation';
 
 interface FileUploadProps {
   onUploadComplete?: () => void;
@@ -24,6 +25,7 @@ interface UploadingFile {
 export function FileUpload({ onUploadComplete }: FileUploadProps) {
   const { user } = useAuth();
   const { address } = useAccount();
+  const router = useRouter();
   const [files, setFiles] = useState<UploadingFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadStartTime, setUploadStartTime] = useState<number | null>(null);
@@ -154,6 +156,9 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       }
 
       toast.success('All files uploaded successfully!');
+      
+      // Redirect to the "My Files" page
+      router.push('/dashboard/files');
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Failed to upload some files. Please try again.');
