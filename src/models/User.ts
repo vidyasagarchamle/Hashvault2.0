@@ -46,7 +46,7 @@ const userSchema = new mongoose.Schema({
   },
   totalAvailableStorage: {
     type: Number,
-    default: 0,
+    default: FREE_STORAGE_LIMIT,
   },
   lastStorageCheck: {
     type: Date,
@@ -62,11 +62,6 @@ const userSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true
-});
-
-// Virtual for total available storage
-userSchema.virtual('totalAvailableStorage').get(function() {
-  return FREE_STORAGE_LIMIT + this.totalStoragePurchased;
 });
 
 // Virtual for remaining storage
