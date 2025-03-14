@@ -6,6 +6,9 @@ import { FREE_STORAGE_LIMIT } from '@/lib/constants';
 // Mark this route as dynamic to allow headers usage
 export const dynamic = 'force-dynamic';
 
+// Set a timeout for the entire route
+export const maxDuration = 10; // 10 seconds
+
 export async function GET(req: Request) {
   try {
     // Get the authorization header
@@ -21,31 +24,56 @@ export async function GET(req: Request) {
     const walletAddress = authHeader.replace('Bearer ', '').toLowerCase();
 
     console.log('Connecting to database...');
-    await connectToDatabase();
-    console.log('Connected to database');
+    try {
+      await connectToDatabase();
+      console.log('Connected to database');
+    } catch (error) {
+      console.error('Database connection error:', error);
+      return NextResponse.json(
+        { error: "Database connection failed" },
+        { status: 503 }
+      );
+    }
 
     console.log('Finding user with wallet address:', walletAddress);
     // Get user's storage information
-    const user = await User.findOne({ walletAddress });
-    console.log('User found:', user ? 'yes' : 'no');
+    let user;
+    try {
+      user = await User.findOne({ walletAddress });
+      console.log('User found:', user ? 'yes' : 'no');
+    } catch (error) {
+      console.error('User lookup error:', error);
+      return NextResponse.json(
+        { error: "Failed to lookup user" },
+        { status: 500 }
+      );
+    }
 
     if (!user) {
       // Create a new user with default values
-      const newUser = new User({
-        walletAddress,
-        totalStorageUsed: 0,
-        totalStoragePurchased: 0,
-        totalAvailableStorage: FREE_STORAGE_LIMIT,
-      });
-      await newUser.save();
-      console.log('Created new user');
+      try {
+        const newUser = new User({
+          walletAddress,
+          totalStorageUsed: 0,
+          totalStoragePurchased: 0,
+          totalAvailableStorage: FREE_STORAGE_LIMIT,
+        });
+        await newUser.save();
+        console.log('Created new user');
 
-      return NextResponse.json({
-        totalStorageUsed: 0,
-        totalStoragePurchased: 0,
-        totalAvailableStorage: FREE_STORAGE_LIMIT,
-        remainingStorage: FREE_STORAGE_LIMIT,
-      });
+        return NextResponse.json({
+          totalStorageUsed: 0,
+          totalStoragePurchased: 0,
+          totalAvailableStorage: FREE_STORAGE_LIMIT,
+          remainingStorage: FREE_STORAGE_LIMIT,
+        });
+      } catch (error) {
+        console.error('User creation error:', error);
+        return NextResponse.json(
+          { error: "Failed to create new user" },
+          { status: 500 }
+        );
+      }
     }
 
     // Calculate total available storage (free + purchased)
