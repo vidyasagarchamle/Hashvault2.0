@@ -7,13 +7,13 @@ import { toast } from "sonner";
 import { STORAGE_PLAN_SIZE, STORAGE_PLAN_PRICE } from '@/lib/constants';
 import { storageUpdateEvent, STORAGE_UPDATED } from "./StorageUsage";
 import { parseUnits } from "viem";
-import { useAccount, useWalletClient, useChainId, useSwitchChain, useReadContract } from "wagmi";
+import { useAccount, useWalletClient, useChainId, useSwitchChain } from "wagmi";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { base } from "wagmi/chains";
 
-// USDT Contract address on Base network - Verified USDT address
-// Base USDT address: https://basescan.org/token/0x4ed4e862860bed51a9570b96d89af5e1b0efefed
-const USDT_CONTRACT_ADDRESS = "0x4ed4E862860bED51A9570B96d89aF5E1B0EfEfEd";
+// USDT Contract address on Base network (USDbC)
+// Verified from https://basescan.org/token/0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca
+const USDT_CONTRACT_ADDRESS = "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA";
 
 // Default decimals for USDT on Base
 const DEFAULT_DECIMALS = 6;
@@ -21,7 +21,7 @@ const DEFAULT_DECIMALS = 6;
 // Direct USDT amount to charge (20 USDT)
 const USDT_AMOUNT = "20";
 
-// ERC20 ABI with symbol and decimals functions
+// ERC20 ABI with transfer function
 const ERC20_ABI = [
   {
     "inputs": [
@@ -31,20 +31,6 @@ const ERC20_ABI = [
     "name": "transfer",
     "outputs": [{ "name": "", "type": "bool" }],
     "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "symbol",
-    "outputs": [{ "name": "", "type": "string" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "decimals",
-    "outputs": [{ "name": "", "type": "uint8" }],
-    "stateMutability": "view",
     "type": "function"
   }
 ] as const;
@@ -61,52 +47,11 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
   const { switchChain } = useSwitchChain();
   const [loading, setLoading] = useState(false);
   const [isCorrectNetwork, setIsCorrectNetwork] = useState(false);
-  const [tokenDecimalsValue, setTokenDecimalsValue] = useState<number>(DEFAULT_DECIMALS);
-  const [displaySymbol, setDisplaySymbol] = useState<string>('USDT');
-
-  // Read token symbol to verify we're using the right token
-  const { data: tokenSymbol } = useReadContract({
-    address: USDT_CONTRACT_ADDRESS as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: 'symbol',
-    chainId: base.id,
-  });
-
-  // Read token decimals
-  const { data: tokenDecimals } = useReadContract({
-    address: USDT_CONTRACT_ADDRESS as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: 'decimals',
-    chainId: base.id,
-  });
 
   // Check if user is on Base network
   useEffect(() => {
     setIsCorrectNetwork(chainId === base.id);
   }, [chainId]);
-
-  // Update token symbol when available
-  useEffect(() => {
-    if (tokenSymbol && typeof tokenSymbol === 'string') {
-      setDisplaySymbol(tokenSymbol);
-      console.log(`Token symbol: ${tokenSymbol}`);
-    }
-  }, [tokenSymbol]);
-
-  // Update token decimals when available
-  useEffect(() => {
-    if (tokenDecimals !== undefined) {
-      // Ensure tokenDecimals is treated as a number
-      const decimalsValue = typeof tokenDecimals === 'number' 
-        ? tokenDecimals 
-        : typeof tokenDecimals === 'bigint'
-          ? Number(tokenDecimals)
-          : DEFAULT_DECIMALS;
-      
-      setTokenDecimalsValue(decimalsValue);
-      console.log(`Token decimals: ${decimalsValue}`);
-    }
-  }, [tokenDecimals]);
 
   const handleSwitchNetwork = async () => {
     try {
@@ -132,29 +77,27 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
       return;
     }
 
-    // Verify we're using USDT
-    if (displaySymbol !== 'USDT') {
-      toast.error(`Wrong token detected: ${displaySymbol}. Expected USDT.`);
-      return;
-    }
-
     try {
       setLoading(true);
       
-      console.log(`Using token decimals: ${tokenDecimalsValue}`);
+      // Use direct USDT amount (20 USDT) with 6 decimals
+      const usdtAmount = parseUnits(USDT_AMOUNT, DEFAULT_DECIMALS);
       
-      // Use direct USDT amount (20 USDT)
-      const usdtAmount = parseUnits(USDT_AMOUNT, tokenDecimalsValue);
+      console.log(`Sending ${USDT_AMOUNT} USDT on Base network`);
       
-      console.log(`Sending ${USDT_AMOUNT} ${displaySymbol} on Base network with ${tokenDecimalsValue} decimals`);
+      // Get payment address from environment variable
+      const paymentAddress = process.env.NEXT_PUBLIC_PAYMENT_ADDRESS;
+      if (!paymentAddress) {
+        throw new Error('Payment address not configured');
+      }
       
       // Send USDT transaction using the ERC20 transfer function
       const txHash = await walletClient.writeContract({
-        address: USDT_CONTRACT_ADDRESS as `0x${string}`,
+        address: USDT_CONTRACT_ADDRESS,
         abi: ERC20_ABI,
         functionName: 'transfer',
         args: [
-          process.env.NEXT_PUBLIC_PAYMENT_ADDRESS as `0x${string}`,
+          paymentAddress as `0x${string}`,
           usdtAmount
         ]
       });
@@ -170,7 +113,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
         },
         body: JSON.stringify({
           transactionHash: txHash,
-          paymentMethod: displaySymbol,
+          paymentMethod: 'USDT',
           network: 'Base'
         })
       });
