@@ -1,7 +1,7 @@
 'use client';
 
 import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowkit';
-import { WagmiConfig } from 'wagmi';
+import { WagmiConfig, createConfig } from 'wagmi';
 import { mainnet, base } from 'wagmi/chains';
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -12,13 +12,19 @@ import { ReactNode, useState, useEffect } from 'react';
 // Ensure we have a valid project ID - hardcoded for reliability
 const projectId = 'c6c9bacd35167d2e3c2ed97d3a51a7c0';
 
-// Create the wagmi config
-const config = getDefaultConfig({
+// Create the wagmi config with explicit autoConnect
+const wagmiConfig = getDefaultConfig({
   appName: 'HashVault',
   projectId: projectId,
   chains: [base, mainnet],
   ssr: true,
 });
+
+// Modify the config to enable autoConnect
+const config = {
+  ...wagmiConfig,
+  autoConnect: true
+};
 
 // Create a new QueryClient for React Query with longer cache times
 const queryClient = new QueryClient({

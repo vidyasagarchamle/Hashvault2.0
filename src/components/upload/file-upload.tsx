@@ -150,15 +150,12 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       // Trigger storage update
       storageUpdateEvent.dispatchEvent(new Event(STORAGE_UPDATED));
 
-      // Call onUploadComplete if provided
+      toast.success('All files uploaded successfully!');
+      
+      // Use the onUploadComplete callback to switch to the files view
       if (onUploadComplete) {
         onUploadComplete();
       }
-
-      toast.success('All files uploaded successfully!');
-      
-      // Redirect to the "My Files" page
-      router.push('/dashboard/files');
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Failed to upload some files. Please try again.');
