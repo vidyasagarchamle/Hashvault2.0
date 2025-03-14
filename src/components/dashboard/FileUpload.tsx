@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Upload, X, FileIcon, Image, Music, FileText, Video } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
-import { LighthouseDirectClient } from "@/lib/lighthouse-direct-client";
+import { WebHashClient } from "@/lib/webhash-client";
 import { getWalletAddressFromUser } from '@/lib/wallet-utils';
 
 export default function FileUpload() {
@@ -107,7 +107,7 @@ export default function FileUpload() {
       setUploadStartTime(Date.now());
 
       console.log(`Starting upload of: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
-      const client = LighthouseDirectClient.getInstance();
+      const client = WebHashClient.getInstance();
       
       // Show initial toast for large files
       if (file.size > 50 * 1024 * 1024) { // 50MB
@@ -117,7 +117,7 @@ export default function FileUpload() {
       const result = await client.uploadFile({
         file,
         walletAddress,
-        onProgress: (progress) => {
+        onProgress: (progress: number) => {
           setUploadProgress(progress);
           console.log(`Upload progress: ${progress}%`);
         }
