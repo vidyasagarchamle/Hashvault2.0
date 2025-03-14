@@ -1,104 +1,84 @@
 # HashVault
 
-A decentralized file storage platform built with Next.js, Lighthouse Protocol, and Privy authentication.
+A decentralized file storage platform built with Next.js, WebHash Protocol, and Privy authentication.
 
 ## Features
 
-- 🔐 Secure authentication with Privy
-- 📤 Decentralized file storage using WebHash
-- 📱 Modern, responsive UI with Tailwind CSS
-- 🔄 Real-time upload progress tracking
-- 📊 File management dashboard
-- 🌙 Dark/Light mode support
-- 🛡️ Fallback mechanisms for API failures
-- 📱 Responsive design for all devices
-
-## Tech Stack
-
-- **Frontend**: Next.js 14, React, Tailwind CSS
-- **Authentication**: Privy
-- **Storage**: WebHash
-- **Database**: MongoDB
-- **Styling**: Shadcn UI Components
+- Secure file storage using WebHash Protocol
+- Wallet-based authentication with Privy
+- File upload and management
+- Storage usage tracking
+- File sharing and access control
 
 ## Prerequisites
 
 - Node.js 18.x or later
-- MongoDB Atlas account
-- Lighthouse Protocol API key
-- Privy API key
+- MongoDB database
+- WebHash Protocol API key
+- Privy App ID
 
 ## Environment Variables
 
-Create a `.env.local` file in the root directory with the following variables:
+Create a `.env` file in the root directory with the following variables:
 
 ```env
-MONGODB_URI=your_mongodb_uri
-LIGHTHOUSE_API_KEY=your_lighthouse_api_key
-NEXT_PUBLIC_LIGHTHOUSE_API_KEY=your_lighthouse_api_key
-NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id
+# MongoDB Configuration
+MONGODB_URI=your_mongodb_uri_here
+
+# WebHash Configuration
+NEXT_PUBLIC_WEBHASH_API_KEY=your_webhash_api_key_here
+
+# Authentication Configuration
+NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id_here
+
+# Storage Configuration
+NEXT_PUBLIC_STORAGE_LIMIT=1000000000 # 1GB in bytes
+
+# Payment Configuration
+NEXT_PUBLIC_PAYMENT_ADDRESS=your_payment_wallet_address_here
+NEXT_PUBLIC_USDC_CONTRACT=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+
+# Optional: Analytics and Monitoring
+NEXT_PUBLIC_ANALYTICS_ID=your_analytics_id_here
+
+# Optional: Feature Flags
+NEXT_PUBLIC_ENABLE_BETA_FEATURES=false
 ```
 
-## Installation
+## Getting Started
 
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/vidyasagarchamle/HashVault.git
-   cd HashVault
-   ```
+```bash
+git clone https://github.com/yourusername/hashvault.git
+cd hashvault
+```
 
 2. Install dependencies:
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+```
 
-3. Set up environment variables:
-   - Copy `.env.example` to `.env.local`
-   - Fill in your API keys and configuration
+3. Set up your environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
 
 4. Start the development server:
-   ```bash
-   npm run dev
-   ```
+```bash
+npm run dev
+```
 
 5. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Project Structure
+## Technologies Used
 
-```
-HashVault/
-├── src/
-│   ├── app/                 # Next.js app directory
-│   ├── components/          # React components
-│   │   ├── dashboard/       # Dashboard components
-│   │   ├── providers/       # Context providers
-│   │   ├── ui/              # UI components
-│   │   └── upload/          # File upload components
-│   ├── lib/                 # Utility functions and clients
-│   ├── models/              # Database models
-│   └── types/               # TypeScript type definitions
-├── public/                  # Static assets
-└── CHANGELOG.md             # Project changelog
-```
-
-## API Routes
-
-- `/api/upload` - File upload endpoint
-- `/api/retrieve/[cid]` - File retrieval endpoint
-- `/api/files` - File management endpoints
-- `/api/storage/info` - Storage usage information
-- `/api/storage/check` - Storage limit verification
-- `/api/storage/purchase` - Storage plan purchase
-
-## Recent Changes
-
-See the [CHANGELOG.md](CHANGELOG.md) file for a detailed list of changes in each version.
-
-### Latest Updates (v0.1.1)
-- Fixed theme toggle functionality
-- Improved dashboard loading with proper client-side rendering
-- Added fallback mechanisms for API failures
-- Enhanced error handling throughout the application
+- [Next.js](https://nextjs.org/) for the web application
+- [WebHash Protocol](https://webhash.io/) for decentralized storage
+- [Privy](https://www.privy.io/) for authentication
+- [MongoDB](https://www.mongodb.com/) for metadata storage
+- [Tailwind CSS](https://tailwindcss.com/) for styling
+- [RainbowKit](https://www.rainbowkit.com/) for wallet connection
 
 ## Contributing
 
@@ -114,7 +94,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- [Lighthouse Protocol](https://lighthouse.storage/) for decentralized storage
+- [WebHash Protocol](https://webhash.io/) for decentralized storage
 - [Privy](https://www.privy.io/) for authentication
 - [Next.js](https://nextjs.org/) for the framework
 - [Tailwind CSS](https://tailwindcss.com/) for styling
+- [RainbowKit](https://www.rainbowkit.com/) for wallet integration
