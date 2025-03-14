@@ -13,7 +13,13 @@ if (!fs.existsSync(TEMP_DIR)) {
 
 // New way to configure route options in Next.js App Router
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 30; // 30 seconds is enough for chunk uploads
+
+// Set the maximum request body size to 4MB (Vercel's limit is 4.5MB for hobby plan)
+// This allows for a 2MB chunk plus metadata overhead
+export const bodySize = {
+  sizeLimit: '4mb'
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,6 +41,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'No file chunk provided' },
         { status: 400 }
+      );
+    }
+
+    // Check chunk size - Vercel has a 4.5MB limit on request size
+    if (fileChunk.size > 4 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'Chunk size exceeds the 4MB limit' },
+        { status: 413 }
       );
     }
 
@@ -62,7 +76,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await fileChunk.arrayBuffer());
     fs.writeFileSync(chunkPath, buffer);
 
-    console.log(`Saved chunk ${chunkIndex} of ${totalChunks} for upload ${uploadId}`);
+    console.log(`Saved chunk ${chunkIndex} of ${totalChunks} for upload ${uploadId} (${buffer.length} bytes)`);
 
     // Return success response
     return NextResponse.json({

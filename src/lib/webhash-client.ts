@@ -241,8 +241,8 @@ export class WebHashClient {
   }
   
   private async chunkedUpload(file: File, walletAddress: string, onProgress?: (progress: number) => void): Promise<any> {
-    // Chunk size: 5MB
-    const CHUNK_SIZE = 5 * 1024 * 1024;
+    // Reduce chunk size to 2MB to avoid 413 Request Entity Too Large errors
+    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunks instead of 5MB
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     let uploadedChunks = 0;
     let uploadId = Date.now().toString(); // Simple unique ID for this upload
@@ -285,11 +285,24 @@ export class WebHashClient {
           const errorText = await chunkResponse.text();
           lastError = new Error(`Chunk upload failed: ${chunkResponse.status} ${chunkResponse.statusText} - ${errorText}`);
           
+          // If we get a 413 error (Request Entity Too Large), we need to use even smaller chunks
+          if (chunkResponse.status === 413) {
+            console.error('Chunk too large for server. Consider using smaller chunks in future uploads.');
+            // We'll throw this specific error to handle it specially
+            throw new Error('CHUNK_TOO_LARGE');
+          }
+          
           if (chunkResponse.status >= 400 && chunkResponse.status < 500) {
             throw lastError;
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error(`Chunk upload failed (${retries} retries left):`, error);
+          
+          // If this is our special error, we need to break out completely
+          if (error.message === 'CHUNK_TOO_LARGE') {
+            throw new Error('File upload failed: chunks are too large for the server. Please try a smaller file or contact support.');
+          }
+          
           lastError = error;
         }
         
