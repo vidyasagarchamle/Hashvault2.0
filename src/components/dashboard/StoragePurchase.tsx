@@ -7,15 +7,16 @@ import { toast } from "sonner";
 import { STORAGE_PLAN_SIZE, STORAGE_PLAN_PRICE } from '@/lib/constants';
 import { storageUpdateEvent, STORAGE_UPDATED } from "./StorageUsage";
 import { parseUnits } from "viem";
-import { useAccount, useWalletClient, useChainId, useSwitchChain } from "wagmi";
+import { useAccount, useWalletClient, useChainId, useSwitchChain, useReadContract } from "wagmi";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { base } from "wagmi/chains";
 
-// USDT Contract address on Base network
-const USDT_CONTRACT_ADDRESS = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"; // Base USDT address
+// USDT Contract address on Base network - Updated to correct address
+// Base USDT address: https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+const USDT_CONTRACT_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
-// ERC20 transfer function ABI
-const ERC20_TRANSFER_ABI = [
+// ERC20 ABI with symbol and decimals functions
+const ERC20_ABI = [
   {
     "inputs": [
       { "name": "recipient", "type": "address" },
@@ -24,6 +25,20 @@ const ERC20_TRANSFER_ABI = [
     "name": "transfer",
     "outputs": [{ "name": "", "type": "bool" }],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "symbol",
+    "outputs": [{ "name": "", "type": "string" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "decimals",
+    "outputs": [{ "name": "", "type": "uint8" }],
+    "stateMutability": "view",
     "type": "function"
   }
 ];
@@ -41,10 +56,36 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
   const [loading, setLoading] = useState(false);
   const [isCorrectNetwork, setIsCorrectNetwork] = useState(false);
 
+  // Read token symbol to verify we're using the right token
+  const { data: tokenSymbol } = useReadContract({
+    address: USDT_CONTRACT_ADDRESS as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'symbol',
+    chainId: base.id,
+  });
+
+  // Read token decimals
+  const { data: tokenDecimals } = useReadContract({
+    address: USDT_CONTRACT_ADDRESS as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'decimals',
+    chainId: base.id,
+  });
+
   // Check if user is on Base network
   useEffect(() => {
     setIsCorrectNetwork(chainId === base.id);
   }, [chainId]);
+
+  // Log token information when available
+  useEffect(() => {
+    if (tokenSymbol) {
+      console.log(`Token symbol: ${tokenSymbol}`);
+    }
+    if (tokenDecimals !== undefined) {
+      console.log(`Token decimals: ${tokenDecimals}`);
+    }
+  }, [tokenSymbol, tokenDecimals]);
 
   const handleSwitchNetwork = async () => {
     try {
@@ -70,22 +111,27 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
       return;
     }
 
+    // Verify we're using USDT
+    if (tokenSymbol !== 'USDT' && tokenSymbol !== 'USDbC') {
+      toast.error(`Wrong token detected: ${tokenSymbol}. Expected USDT.`);
+      return;
+    }
+
     try {
       setLoading(true);
       
-      // USDT has 6 decimals on Base
-      const usdtDecimals = 6;
+      // Use the actual decimals from the token contract or fallback to 6
+      const usdtDecimals = tokenDecimals ?? 6;
       
       // Convert USD price to USDT amount with proper decimals
-      // For USDT, 1 USDT = 1 USD, so the conversion is straightforward
       const usdtAmount = parseUnits(STORAGE_PLAN_PRICE.toString(), usdtDecimals);
       
-      console.log(`Sending ${STORAGE_PLAN_PRICE} USDT on Base network`);
+      console.log(`Sending ${STORAGE_PLAN_PRICE} ${tokenSymbol} on Base network with ${usdtDecimals} decimals`);
       
       // Send USDT transaction using the ERC20 transfer function
       const txHash = await walletClient.writeContract({
         address: USDT_CONTRACT_ADDRESS as `0x${string}`,
-        abi: ERC20_TRANSFER_ABI,
+        abi: ERC20_ABI,
         functionName: 'transfer',
         args: [
           process.env.NEXT_PUBLIC_PAYMENT_ADDRESS as `0x${string}`,
@@ -93,7 +139,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
         ]
       });
       
-      toast.info('Transaction submitted, waiting for confirmation...');
+      toast.info(`Transaction submitted, waiting for confirmation...`);
       
       // Call the storage purchase API
       const purchaseResponse = await fetch('/api/storage/purchase', {
@@ -104,7 +150,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
         },
         body: JSON.stringify({
           transactionHash: txHash,
-          paymentMethod: 'USDT',
+          paymentMethod: tokenSymbol || 'USDT',
           network: 'Base'
         })
       });
@@ -175,7 +221,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
               onClick={handlePurchase}
               disabled={loading || !ready || !isConnected || !address || !walletClient || !isCorrectNetwork}
             >
-              {loading ? 'Processing...' : 'Purchase Now with USDT'}
+              {loading ? 'Processing...' : `Purchase Now with ${tokenSymbol || 'USDT'}`}
             </Button>
           )}
         </div>
@@ -184,7 +230,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
           <p>• Storage space is added to your account immediately after purchase</p>
           <p>• One-time payment, no recurring fees</p>
           <p>• Purchase multiple plans if you need more space</p>
-          <p>• Payment will be processed in USDT on the Base network</p>
+          <p>• Payment will be processed in {tokenSymbol || 'USDT'} on the Base network</p>
           <p className="font-medium text-blue-600 dark:text-blue-400">• You must be connected to Base network to make a payment</p>
         </div>
       </div>
