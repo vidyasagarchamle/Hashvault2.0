@@ -8,15 +8,21 @@ import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { WebHashClient } from "@/lib/webhash-client";
 import { getWalletAddressFromUser } from '@/lib/wallet-utils';
+import { useRouter } from 'next/navigation';
+import { storageUpdateEvent, STORAGE_UPDATED } from './StorageUsage';
+import { cn } from "@/lib/utils";
 
 export default function FileUpload() {
   const { user } = usePrivy();
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStartTime, setUploadStartTime] = useState<number | null>(null);
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   // Format seconds into a readable time format
   const formatTime = (seconds: number): string => {
@@ -32,30 +38,27 @@ export default function FileUpload() {
     }
 
     const updateEstimate = () => {
-      const timeElapsed = (Date.now() - uploadStartTime) / 1000; // in seconds
-      if (uploadProgress > 0 && timeElapsed > 0) {
-        // Estimate remaining time based on progress so far
-        const estimatedTotalTime = (timeElapsed / uploadProgress) * 100;
-        const timeRemaining = Math.max(0, estimatedTotalTime - timeElapsed);
-        setEstimatedTimeRemaining(formatTime(timeRemaining));
+      const elapsedTime = (Date.now() - uploadStartTime) / 1000; // in seconds
+      if (uploadProgress > 0) {
+        const estimatedTotalTime = (elapsedTime / uploadProgress) * 100;
+        const remainingTime = estimatedTotalTime - elapsedTime;
+        setEstimatedTimeRemaining(formatTime(remainingTime));
       }
     };
 
-    // Initial update
     updateEstimate();
-
-    // Update every second
     const interval = setInterval(updateEstimate, 1000);
     return () => clearInterval(interval);
   }, [uploading, uploadStartTime, uploadProgress]);
 
   const handleSelectClick = () => {
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
-    
     if (selectedFile) {
       console.log('Selected file:', {
         name: selectedFile.name,
@@ -66,6 +69,49 @@ export default function FileUpload() {
       });
       
       setFile(selectedFile);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only set isDragging to false if we're leaving the dropzone
+    // and not entering a child element
+    if (dropZoneRef.current && !dropZoneRef.current.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const droppedFile = e.dataTransfer.files[0];
+      console.log('Dropped file:', {
+        name: droppedFile.name,
+        type: droppedFile.type || "unknown",
+        size: droppedFile.size,
+        sizeInMB: (droppedFile.size / (1024 * 1024)).toFixed(2) + " MB",
+        extension: droppedFile.name.split('.').pop()?.toLowerCase() || "unknown"
+      });
+      
+      setFile(droppedFile);
     }
   };
 
@@ -132,6 +178,12 @@ export default function FileUpload() {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      
+      // Trigger storage update event
+      storageUpdateEvent.dispatchEvent(new Event(STORAGE_UPDATED));
+      
+      // Redirect to My Files page
+      router.push('/dashboard/files');
     } catch (error) {
       console.error('Upload error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to upload file');
@@ -170,14 +222,29 @@ export default function FileUpload() {
           accept="audio/*,video/*,image/*,.pdf,.doc,.docx,.txt"
         />
 
-        {/* Visual upload area */}
+        {/* Visual upload area with drag and drop */}
         <div 
+          ref={dropZoneRef}
           onClick={handleSelectClick}
-          className="rounded-lg border-2 border-dashed border-gray-300 p-6 flex flex-col items-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={cn(
+            "rounded-lg border-2 border-dashed p-6 flex flex-col items-center cursor-pointer transition-colors",
+            isDragging 
+              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" 
+              : "border-gray-300 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10"
+          )}
         >
-          <Upload className="w-12 h-12 text-gray-400 mb-4" />
+          <Upload className={cn(
+            "w-12 h-12 mb-4 transition-colors",
+            isDragging ? "text-blue-500" : "text-gray-400"
+          )} />
           <div className="text-center space-y-2">
-            <h3 className="text-lg font-medium">Click to select a file</h3>
+            <h3 className="text-lg font-medium">
+              {isDragging ? "Drop your file here" : "Drag & drop or click to select a file"}
+            </h3>
             <p className="text-sm text-gray-500">
               Images, Audio, Video, and Documents
             </p>

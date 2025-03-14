@@ -70,7 +70,7 @@ export default function HomePage() {
     {
       icon: Shield,
       title: "Secure Storage",
-      description: "Your files are encrypted and stored on decentralized networks, ensuring maximum security and privacy"
+      description: "Your files are stored on decentralized networks, ensuring maximum availability and censorship resistance"
     },
     {
       icon: Cloud,
@@ -88,7 +88,7 @@ export default function HomePage() {
     {
       icon: CheckCircle2,
       title: "Zero Trust Architecture",
-      description: "Files are encrypted before leaving your device"
+      description: "Files are stored directly on IPFS without intermediaries"
     },
     {
       icon: Zap,

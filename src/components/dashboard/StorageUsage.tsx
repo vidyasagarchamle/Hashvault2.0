@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { StoragePurchase } from "./StoragePurchase";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useAccount } from "wagmi";
 import { getWalletAddressFromUser } from "@/lib/wallet-utils";
+import { RefreshCw } from "lucide-react";
 
 interface StorageInfo {
   used: number;
@@ -30,8 +31,9 @@ export default function StorageUsage() {
   const [loading, setLoading] = useState(true);
   const [showPurchase, setShowPurchase] = useState(false);
   const [apiError, setApiError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchStorageInfo = async () => {
+  const fetchStorageInfo = useCallback(async () => {
     // Get wallet address from user object or direct from wagmi
     const walletAddress = getWalletAddressFromUser(user) || address;
     
@@ -42,6 +44,7 @@ export default function StorageUsage() {
     }
 
     try {
+      setRefreshing(true);
       console.log("Fetching storage info with address:", walletAddress);
       // Try to fetch from API
       const response = await fetch('/api/storage/info', {
@@ -76,8 +79,9 @@ export default function StorageUsage() {
       setApiError(true);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [user, address]);
 
   // Listen for storage updates
   useEffect(() => {
@@ -89,11 +93,13 @@ export default function StorageUsage() {
     return () => {
       storageUpdateEvent.removeEventListener(STORAGE_UPDATED, handleStorageUpdate);
     };
-  }, [user, address]);
+  }, [fetchStorageInfo]);
 
+  // Only fetch on initial mount and when user/address changes
   useEffect(() => {
     fetchStorageInfo();
-  }, [user, address]);
+    // No interval or continuous polling
+  }, [fetchStorageInfo]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -148,9 +154,23 @@ export default function StorageUsage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium">Storage Usage</h3>
-          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full dark:bg-blue-900 dark:text-blue-100">
-            Free Tier
-          </span>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={fetchStorageInfo} 
+              disabled={refreshing}
+              className="p-1 h-auto"
+            >
+              <RefreshCw className={cn(
+                "w-4 h-4 text-gray-500",
+                refreshing && "animate-spin"
+              )} />
+            </Button>
+            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full dark:bg-blue-900 dark:text-blue-100">
+              Free Tier
+            </span>
+          </div>
         </div>
 
         {apiError && (
