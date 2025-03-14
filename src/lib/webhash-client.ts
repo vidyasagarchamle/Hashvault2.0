@@ -166,8 +166,8 @@ export class WebHashClient {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Upload to WebHash IPFS endpoint with retry logic
-      console.debug('Uploading to WebHash IPFS endpoint...');
+      // Upload to WebHash IPFS endpoint through our proxy API with retry logic
+      console.debug('Uploading to WebHash IPFS endpoint via proxy...');
       
       // Retry logic
       let retries = 3;
@@ -176,14 +176,12 @@ export class WebHashClient {
       
       while (retries > 0) {
         try {
-          response = await fetch(`${this.apiUrl}/upload`, {
+          // Use our own proxy API endpoint instead of direct external API call
+          response = await fetch(`/api/webhash/upload`, {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${this.apiKey}`
-            },
             body: formData,
             // Add a longer timeout
-            signal: AbortSignal.timeout(30000) // 30 second timeout
+            signal: AbortSignal.timeout(45000) // 45 second timeout
           });
           
           // If successful, break out of retry loop
