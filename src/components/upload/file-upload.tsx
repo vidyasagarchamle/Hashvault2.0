@@ -6,8 +6,10 @@ import { Upload, X, FileIcon, Image, Music, FileText, Video, FolderUp } from "lu
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { WebHashClient } from '@/lib/webhash-client';
-import { usePrivy } from '@privy-io/react-auth';
 import { storageUpdateEvent, STORAGE_UPDATED } from "@/components/dashboard/StorageUsage";
+import { useAuth } from "@/lib/hooks/use-auth";
+import { useAccount } from "wagmi";
+import { getWalletAddressFromUser } from "@/lib/wallet-utils";
 
 interface FileUploadProps {
   onUploadComplete?: () => void;
@@ -20,7 +22,8 @@ interface UploadingFile {
 }
 
 export function FileUpload({ onUploadComplete }: FileUploadProps) {
-  const { user } = usePrivy();
+  const { user } = useAuth();
+  const { address } = useAccount();
   const [files, setFiles] = useState<UploadingFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadStartTime, setUploadStartTime] = useState<number | null>(null);
@@ -81,7 +84,15 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
   };
 
   const handleUpload = async () => {
-    if (files.length === 0 || !user?.wallet?.address) return;
+    if (files.length === 0) return;
+
+    // Get wallet address from user object or direct from wagmi
+    const walletAddress = getWalletAddressFromUser(user) || address;
+    
+    if (!walletAddress) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
 
     try {
       setUploading(true);
@@ -89,12 +100,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
 
       // Check storage limits first
       const totalSize = files.reduce((sum, file) => sum + file.file.size, 0);
-      const walletAddress = user?.wallet?.address;
-      if (!walletAddress) {
-        toast.error('Please connect your wallet first');
-        return;
-      }
-
+      
       const storageCheckResponse = await fetch('/api/storage/check', {
         method: 'POST',
         headers: {
@@ -175,6 +181,9 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
     if (files.length === 0) return 0;
     return files.reduce((sum, file) => sum + file.progress, 0) / files.length;
   };
+
+  // Get wallet address for button state
+  const walletAddress = getWalletAddressFromUser(user) || address;
 
   return (
     <Card className="p-6 w-full">
@@ -279,7 +288,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
             <Button
               variant="default"
               onClick={handleUpload}
-              disabled={files.length === 0 || uploading || !user?.wallet?.address}
+              disabled={files.length === 0 || uploading || !walletAddress}
               className="flex items-center gap-2"
             >
               {uploading ? (

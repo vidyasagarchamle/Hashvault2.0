@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Download, Trash2, FileIcon, Image, FileText, Film, Link } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { Download, FileIcon, Image, FileText, Film, Link, Music, Archive, Code, ExternalLink } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { WebHashClient } from '@/lib/webhash-client';
 import { toast } from 'sonner';
-import { usePrivy } from '@privy-io/react-auth';
-import { storageUpdateEvent, STORAGE_UPDATED } from '@/components/dashboard/StorageUsage';
+import { useAuth } from '@/lib/hooks/use-auth';
+import { getWalletAddressFromUser } from '@/lib/wallet-utils';
+import { useAccount } from 'wagmi';
 
 interface FileItem {
   fileName: string;
@@ -21,24 +22,45 @@ interface FileItem {
 const getFileIcon = (mimeType: string) => {
   if (mimeType.startsWith('image/')) return Image;
   if (mimeType.startsWith('video/')) return Film;
-  if (mimeType.startsWith('text/') || mimeType.includes('pdf')) return FileText;
+  if (mimeType.startsWith('audio/')) return Music;
+  if (mimeType.startsWith('text/')) return FileText;
+  if (mimeType.includes('pdf')) return FileText;
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('tar')) return Archive;
+  if (mimeType.includes('javascript') || mimeType.includes('json') || mimeType.includes('html') || mimeType.includes('css')) return Code;
   return FileIcon;
 };
 
-export default function FileList() {
+const getFileColor = (mimeType: string): string => {
+  if (mimeType.startsWith('image/')) return 'text-blue-500';
+  if (mimeType.startsWith('video/')) return 'text-purple-500';
+  if (mimeType.startsWith('audio/')) return 'text-pink-500';
+  if (mimeType.startsWith('text/')) return 'text-yellow-500';
+  if (mimeType.includes('pdf')) return 'text-red-500';
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('tar')) return 'text-green-500';
+  if (mimeType.includes('javascript') || mimeType.includes('json') || mimeType.includes('html') || mimeType.includes('css')) return 'text-orange-500';
+  return 'text-gray-500';
+};
+
+// Add this CSS class right after imports
+const scrollableContainerClass = `
+  h-[calc(100vh-16rem)] 
+  overflow-y-auto 
+  px-1
+  scrollbar-none
+  [&::-webkit-scrollbar]:hidden
+  [-ms-overflow-style:'none']
+  [scrollbar-width:'none']
+`;
+
+export function FileList() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deletingFile, setDeletingFile] = useState<string | null>(null);
-  const { user } = usePrivy();
+  const { user } = useAuth();
+  const { address } = useAccount();
+  const [currentWallet, setCurrentWallet] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (user?.wallet?.address) {
-      loadFiles();
-    }
-  }, [user?.wallet?.address]);
-
-  const loadFiles = async () => {
-    if (!user?.wallet?.address) {
+  const loadFiles = useCallback(async (walletAddress: string) => {
+    if (!walletAddress) {
       setLoading(false);
       return;
     }
@@ -46,7 +68,7 @@ export default function FileList() {
     try {
       setLoading(true);
       const client = WebHashClient.getInstance();
-      const files = await client.getUploads(user.wallet.address);
+      const files = await client.getUploads(walletAddress);
       setFiles(files);
     } catch (error) {
       console.error('Error loading files:', error);
@@ -54,36 +76,17 @@ export default function FileList() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  };
-
-  const handleDelete = async (cid: string) => {
-    if (!user?.wallet?.address) {
-      toast.error('Please connect your wallet first');
-      return;
+  useEffect(() => {
+    const walletAddress = getWalletAddressFromUser(user) || address;
+    
+    // Only reload if wallet address has changed
+    if (walletAddress && walletAddress !== currentWallet) {
+      setCurrentWallet(walletAddress);
+      loadFiles(walletAddress);
     }
-
-    try {
-      setDeletingFile(cid);
-      const client = WebHashClient.getInstance();
-      await client.deleteFile(cid, user.wallet.address);
-      await loadFiles();
-      // Trigger storage update
-      storageUpdateEvent.dispatchEvent(new Event(STORAGE_UPDATED));
-      toast.success('File deleted successfully');
-    } catch (error) {
-      console.error('Error deleting file:', error);
-      toast.error('Failed to delete file');
-    } finally {
-      setDeletingFile(null);
-    }
-  };
+  }, [user, address, currentWallet, loadFiles]);
 
   const handleDownload = async (file: FileItem) => {
     try {
@@ -122,6 +125,11 @@ export default function FileList() {
     }
   };
 
+  const handleView = (file: FileItem) => {
+    const url = `https://ipfs.io/ipfs/${file.cid}`;
+    window.open(url, '_blank');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -139,78 +147,95 @@ export default function FileList() {
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {files.map((file) => {
-        const FileIconComponent = getFileIcon(file.mimeType);
-        const isImage = file.mimeType.startsWith('image/');
-        const fileUrl = `https://ipfs.io/ipfs/${file.cid}`;
+    <div className={scrollableContainerClass}>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 pb-4">
+        {files.map((file) => {
+          const FileIconComponent = getFileIcon(file.mimeType);
+          const isImage = file.mimeType.startsWith('image/');
+          const fileUrl = `https://ipfs.io/ipfs/${file.cid}`;
+          const iconColor = getFileColor(file.mimeType);
 
-        return (
-          <Card key={file.cid} className="overflow-hidden">
-            <div className="aspect-video relative bg-gray-100 dark:bg-gray-800">
-              {isImage ? (
-                <img
-                  src={fileUrl}
-                  alt={file.fileName}
-                  className="object-cover w-full h-full"
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <FileIconComponent className="w-12 h-12 text-gray-400" />
+          return (
+            <Card key={file.cid} className="overflow-hidden bg-white dark:bg-gray-800 hover:shadow-lg transition-shadow">
+              <div className="h-48 relative bg-gray-50 dark:bg-gray-900 cursor-pointer" onClick={() => handleView(file)}>
+                {isImage ? (
+                  <div className="w-full h-full relative">
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+                      <FileIconComponent className={`w-16 h-16 ${iconColor} animate-pulse`} />
+                    </div>
+                    <img
+                      src={fileUrl}
+                      alt={file.fileName}
+                      className="absolute inset-0 w-full h-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.parentElement!.querySelector('.bg-gray-100')!.classList.remove('animate-pulse');
+                      }}
+                      loading="lazy"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                    <FileIconComponent className={`w-20 h-20 ${iconColor}`} />
+                    <span className="text-sm text-gray-500 dark:text-gray-400 font-medium px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800">
+                      {file.mimeType.split('/')[1]?.toUpperCase() || 'FILE'}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <h3 className="font-medium truncate" title={file.fileName}>
+                  {file.fileName}
+                </h3>
+                <div className="mt-1 flex items-center gap-2">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {file.formattedSize}
+                  </p>
+                  <span className="text-gray-300">•</span>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {new Date(file.lastUpdate).toLocaleDateString()}
+                  </p>
                 </div>
-              )}
-            </div>
-            <div className="p-4">
-              <h3 className="font-medium truncate" title={file.fileName}>
-                {file.fileName}
-              </h3>
-              <div className="mt-1 flex items-center gap-2">
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {file.formattedSize}
-                </p>
-                <span className="text-gray-300">•</span>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {file.lastUpdate}
-                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex-1" title={file.cid}>
+                    CID: {file.cid}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => copyToClipboard(file.cid)}
+                  >
+                    <Link className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => handleDownload(file)}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => handleView(file)}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    View
+                  </Button>
+                </div>
               </div>
-              <div className="mt-2 flex items-center gap-2">
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex-1" title={file.cid}>
-                  CID: {file.cid}
-                </p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  onClick={() => copyToClipboard(file.cid)}
-                >
-                  <Link className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="mt-4 flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleDownload(file)}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleDelete(file.cid)}
-                  disabled={deletingFile === file.cid}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </Button>
-              </div>
-            </div>
-          </Card>
-        );
-      })}
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
-} 
+}
+
+export { FileList as default }; 

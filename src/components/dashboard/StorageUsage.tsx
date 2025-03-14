@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { usePrivy } from "@privy-io/react-auth";
 import { toast } from "sonner";
 import { FREE_STORAGE_LIMIT } from '@/lib/constants';
 import { cn } from "@/lib/utils";
 import { StoragePurchase } from "./StoragePurchase";
+import { useAuth } from "@/lib/hooks/use-auth";
+import { useAccount } from "wagmi";
+import { getWalletAddressFromUser } from "@/lib/wallet-utils";
 
 interface StorageInfo {
   used: number;
@@ -22,23 +24,29 @@ export const storageUpdateEvent = new EventTarget();
 export const STORAGE_UPDATED = 'storage_updated';
 
 export default function StorageUsage() {
-  const { user } = usePrivy();
+  const { user } = useAuth();
+  const { address } = useAccount();
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPurchase, setShowPurchase] = useState(false);
   const [apiError, setApiError] = useState(false);
 
   const fetchStorageInfo = async () => {
-    if (!user?.wallet?.address) {
+    // Get wallet address from user object or direct from wagmi
+    const walletAddress = getWalletAddressFromUser(user) || address;
+    
+    if (!walletAddress) {
+      console.log("No wallet address available for storage info");
       setLoading(false);
       return;
     }
 
     try {
+      console.log("Fetching storage info with address:", walletAddress);
       // Try to fetch from API
       const response = await fetch('/api/storage/info', {
         headers: {
-          'Authorization': user.wallet.address
+          'Authorization': walletAddress
         }
       });
 
@@ -47,6 +55,7 @@ export default function StorageUsage() {
       }
 
       const data = await response.json();
+      console.log("Storage info received:", data);
       setStorageInfo({
         used: data.totalStorageUsed,
         total: data.totalAvailableStorage,
@@ -80,11 +89,11 @@ export default function StorageUsage() {
     return () => {
       storageUpdateEvent.removeEventListener(STORAGE_UPDATED, handleStorageUpdate);
     };
-  }, [user?.wallet?.address]);
+  }, [user, address]);
 
   useEffect(() => {
     fetchStorageInfo();
-  }, [user?.wallet?.address]);
+  }, [user, address]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -94,7 +103,10 @@ export default function StorageUsage() {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
 
-  if (!user?.wallet?.address) {
+  // Get wallet address for display
+  const walletAddress = getWalletAddressFromUser(user) || address;
+
+  if (!walletAddress) {
     return (
       <Card className="p-4">
         <p className="text-sm text-gray-500">

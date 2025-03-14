@@ -1,9 +1,9 @@
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { PrivyClientProvider } from "@/components/providers/privy-provider";
 import { ToasterProvider } from "@/components/providers/toaster-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ClientWrapper } from "@/components/providers/client-wrapper";
+import { RainbowKitClientProvider } from "@/components/providers/rainbow-provider";
 import { Metadata } from "next";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -30,14 +30,14 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <PrivyClientProvider>
+          <RainbowKitClientProvider>
             <ClientWrapper>
               <div className="flex flex-col min-h-screen">
                 {children}
               </div>
             </ClientWrapper>
             <ToasterProvider />
-          </PrivyClientProvider>
+          </RainbowKitClientProvider>
         </ThemeProvider>
       </body>
     </html>

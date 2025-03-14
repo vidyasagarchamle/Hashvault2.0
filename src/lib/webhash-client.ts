@@ -55,10 +55,13 @@ export class WebHashClient {
   private static instance: WebHashClient;
   private apiUrl: string;
   private apiKey: string;
+  private cache: Map<string, { data: any; timestamp: number }>;
+  private static CACHE_DURATION = 5000; // 5 seconds cache
 
   private constructor() {
     this.apiUrl = 'http://52.38.175.117:5000';
     this.apiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
+    this.cache = new Map();
   }
 
   public static getInstance(): WebHashClient {
@@ -83,28 +86,60 @@ export class WebHashClient {
     return mimeTypes[ext || ''] || 'application/octet-stream';
   }
 
+  private getCacheKey(method: string, params: string): string {
+    return `${method}:${params}`;
+  }
+
+  private getFromCache(key: string): any | null {
+    const cached = this.cache.get(key);
+    if (!cached) return null;
+
+    const now = Date.now();
+    if (now - cached.timestamp > WebHashClient.CACHE_DURATION) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    return cached.data;
+  }
+
+  private setCache(key: string, data: any): void {
+    this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
   async getUploads(walletAddress: string): Promise<any[]> {
     try {
       if (!walletAddress) {
         throw new Error('Wallet address is required');
       }
 
-      const response = await fetch(`/api/upload?walletAddress=${walletAddress}`);
+      const cacheKey = this.getCacheKey('getUploads', walletAddress);
+      const cached = this.getFromCache(cacheKey);
+      if (cached) {
+        return cached;
+      }
+      
+      const response = await fetch(`/api/upload?walletAddress=${walletAddress}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${walletAddress}`
+        }
+      });
+      
       if (!response.ok) {
         throw new Error(`Failed to fetch uploads: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.debug('Uploads fetched:', data);
-      
-      if (!data.success || !Array.isArray(data.files)) {
-        throw new Error('Invalid response format from API');
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch uploads');
       }
 
+      this.setCache(cacheKey, data.files);
       return data.files;
     } catch (error) {
       console.error('Error fetching uploads:', error);
-      return [];
+      throw error;
     }
   }
 

@@ -3,19 +3,21 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { toast } from "sonner";
 import { STORAGE_PLAN_SIZE, STORAGE_PLAN_PRICE } from '@/lib/constants';
 import { storageUpdateEvent, STORAGE_UPDATED } from "./StorageUsage";
-import { parseEther, formatEther } from "viem";
+import { parseEther } from "viem";
+import { useAccount, useWalletClient } from "wagmi";
+import { useAuth } from "@/lib/hooks/use-auth";
 
 interface StoragePurchaseProps {
   onClose: () => void;
 }
 
 export function StoragePurchase({ onClose }: StoragePurchaseProps) {
-  const { ready } = usePrivy();
-  const { wallets } = useWallets();
+  const { ready } = useAuth();
+  const { address, isConnected } = useAccount();
+  const { data: walletClient } = useWalletClient();
   const [loading, setLoading] = useState(false);
   const [ethPrice, setEthPrice] = useState<number | null>(null);
 
@@ -31,7 +33,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
   };
 
   const handlePurchase = async () => {
-    if (!ready || !wallets?.[0]) {
+    if (!ready || !isConnected || !address || !walletClient) {
       toast.error('Please connect your wallet first');
       return;
     }
@@ -44,9 +46,6 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
       if (!currentEthPrice) {
         throw new Error('Failed to fetch ETH price');
       }
-
-      const wallet = wallets[0];
-      const provider = await wallet.getEthereumProvider();
       
       // Convert USD price to ETH
       const ethAmount = STORAGE_PLAN_PRICE / currentEthPrice;
@@ -55,14 +54,10 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
       // Convert ETH amount to Wei
       const priceInWei = parseEther(ethAmount.toFixed(18));
       
-      // Send transaction to payment address
-      const txHash = await provider.request({
-        method: 'eth_sendTransaction',
-        params: [{
-          to: process.env.NEXT_PUBLIC_PAYMENT_ADDRESS,
-          value: priceInWei,
-          from: wallet.address
-        }],
+      // Send transaction
+      const txHash = await walletClient.sendTransaction({
+        to: process.env.NEXT_PUBLIC_PAYMENT_ADDRESS as `0x${string}`,
+        value: priceInWei,
       });
       
       toast.info('Transaction submitted, waiting for confirmation...');
@@ -72,7 +67,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': wallet.address
+          'Authorization': address
         },
         body: JSON.stringify({
           transactionHash: txHash
@@ -129,7 +124,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
           <Button
             className="w-full"
             onClick={handlePurchase}
-            disabled={loading || !ready || !wallets?.[0]}
+            disabled={loading || !ready || !isConnected || !address || !walletClient}
           >
             {loading ? 'Processing...' : 'Purchase Now'}
           </Button>

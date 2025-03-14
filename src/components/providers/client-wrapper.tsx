@@ -6,16 +6,13 @@ export function ClientWrapper({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Set mounted to true as soon as the component mounts
     setMounted(true);
+    
+    // Log to help with debugging
+    console.log("ClientWrapper mounted:", mounted);
   }, []);
 
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-black flex items-center justify-center">
-        <div className="animate-pulse text-white text-xl">Loading...</div>
-      </div>
-    );
-  }
-
+  // Simply return children without any visibility classes
   return <>{children}</>;
 } 

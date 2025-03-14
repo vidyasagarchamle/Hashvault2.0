@@ -13,53 +13,81 @@ interface GlobalMongoose {
   promise: Promise<typeof mongoose> | null;
 }
 
+// Extend the NodeJS global type
 declare global {
-  var mongoose: GlobalMongoose;
+  // eslint-disable-next-line no-var
+  var mongooseGlobal: GlobalMongoose | undefined;
 }
 
 // Initialize the cached connection object
-const cached: GlobalMongoose = global.mongoose || {
+const cached: GlobalMongoose = global.mongooseGlobal || {
   conn: null,
   promise: null,
 };
 
 // Save the cached object on the global object
-if (!global.mongoose) {
-  global.mongoose = cached;
+if (!global.mongooseGlobal) {
+  global.mongooseGlobal = cached;
 }
 
 export async function connectToDatabase(): Promise<typeof mongoose> {
-  if (cached.conn) {
-    console.debug('Using cached MongoDB connection');
-    return cached.conn;
-  }
+  try {
+    // If we have a connection and it's ready, return it
+    if (cached.conn && mongoose.connection.readyState === 1) {
+      return cached.conn;
+    }
 
-  if (!cached.promise) {
+    // If we have a pending connection, wait for it
+    if (cached.promise) {
+      return await cached.promise;
+    }
+
+    // Configure mongoose
+    mongoose.set('strictQuery', true);
+
     const opts = {
       bufferCommands: false,
+      maxPoolSize: 10,
+      minPoolSize: 5,
+      socketTimeoutMS: 45000,
+      family: 4,
+      serverSelectionTimeoutMS: 5000,
     };
 
-    console.debug('Creating new MongoDB connection...');
+    // Create new connection
     cached.promise = mongoose.connect(MONGODB_URI, opts)
       .then((mongoose) => {
-        console.debug('MongoDB connected successfully');
+        // Set up connection error handler
+        mongoose.connection.on('error', (error) => {
+          console.error('MongoDB connection error:', error);
+          cached.conn = null;
+          cached.promise = null;
+        });
+
+        // Set up disconnection handler
+        mongoose.connection.on('disconnected', () => {
+          console.warn('MongoDB disconnected, cleaning up connection cache');
+          cached.conn = null;
+          cached.promise = null;
+        });
+
+        // Set up successful connection handler
+        mongoose.connection.on('connected', () => {
+          console.info('MongoDB connected successfully');
+        });
+
         return mongoose;
       })
       .catch((error) => {
-        console.error('MongoDB connection error:', error);
+        console.error('Failed to connect to MongoDB:', error);
         cached.promise = null;
         throw error;
       });
-  } else {
-    console.debug('Using existing MongoDB connection promise');
-  }
 
-  try {
     cached.conn = await cached.promise;
+    return cached.conn;
   } catch (error) {
-    cached.promise = null;
+    console.error('MongoDB connection error:', error);
     throw error;
   }
-
-  return cached.conn;
 }

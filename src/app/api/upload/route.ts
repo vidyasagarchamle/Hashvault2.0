@@ -81,6 +81,9 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const walletAddress = searchParams.get('walletAddress');
 
+    console.log("API GET request for files with params:", Object.fromEntries(searchParams.entries()));
+    console.log("Headers:", Object.fromEntries(req.headers));
+
     if (!walletAddress) {
       console.debug('No wallet address provided in request');
       return NextResponse.json(
@@ -99,12 +102,29 @@ export async function GET(req: Request) {
       .lean()
       .exec();
 
-    // Transform the files to include _id as a string
-    const transformedFiles = files.map(file => ({
-      ...file,
-      _id: file._id.toString(),
-      lastUpdate: file.updatedAt
-    }));
+    // Transform the files to include _id as a string and format the size
+    const transformedFiles = files.map(file => {
+      // Format the file size
+      let formattedSize = file.size;
+      try {
+        const sizeInBytes = parseInt(file.size, 10);
+        if (!isNaN(sizeInBytes)) {
+          if (sizeInBytes < 1024) formattedSize = `${sizeInBytes} B`;
+          else if (sizeInBytes < 1024 * 1024) formattedSize = `${(sizeInBytes / 1024).toFixed(2)} KB`;
+          else if (sizeInBytes < 1024 * 1024 * 1024) formattedSize = `${(sizeInBytes / (1024 * 1024)).toFixed(2)} MB`;
+          else formattedSize = `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+        }
+      } catch (e) {
+        console.error('Error formatting file size:', e);
+      }
+
+      return {
+        ...file,
+        _id: file._id.toString(),
+        lastUpdate: file.updatedAt || file.createdAt,
+        formattedSize
+      };
+    });
 
     console.debug(`Found ${transformedFiles.length} files for wallet ${walletAddress}`);
     return NextResponse.json({ success: true, files: transformedFiles });

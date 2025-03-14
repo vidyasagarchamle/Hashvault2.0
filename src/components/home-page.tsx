@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Shield, Cloud, Lock, Upload, Download, Key, CheckCircle2, Zap, Users, Globe2 } from 'lucide-react';
+import { ArrowRight, Shield, Cloud, Lock, Upload, Download, Key, CheckCircle2, Zap, Users, Globe2, Wallet } from 'lucide-react';
 import { Logo } from "@/components/ui/logo";
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAuth } from "@/lib/hooks/use-auth";
 
 function Navigation() {
-  const { login } = usePrivy();
-
+  const { login } = useAuth();
+  
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-transparent backdrop-blur-sm border-b border-white/10">
       <div className="container mx-auto max-w-6xl py-4 px-4 flex justify-between items-center">
@@ -17,9 +18,17 @@ function Navigation() {
           <Logo size={32} />
           <span className="font-bold text-xl text-white">HashVault</span>
         </div>
-        <Button onClick={() => login()} variant="outline" className="border-white/20 hover:bg-white/10">
-          Connect Wallet
-        </Button>
+        <ConnectButton.Custom>
+          {({ openConnectModal }) => (
+            <Button 
+              onClick={openConnectModal} 
+              className="bg-white/10 hover:bg-white/20 text-white border border-white/20 flex items-center gap-2"
+            >
+              <Wallet className="w-4 h-4" />
+              Connect Wallet
+            </Button>
+          )}
+        </ConnectButton.Custom>
       </div>
     </nav>
   );
@@ -44,14 +53,18 @@ function Footer() {
 }
 
 export default function HomePage() {
-  const { login, authenticated } = usePrivy();
   const router = useRouter();
+  const { ready, authenticated, login } = useAuth();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (authenticated) {
+    setMounted(true);
+    console.log("HomePage mounted:", mounted);
+    
+    if (ready && authenticated) {
       router.push('/dashboard');
     }
-  }, [authenticated, router]);
+  }, [ready, authenticated, router]);
 
   const features = [
     {
@@ -98,12 +111,12 @@ export default function HomePage() {
     {
       icon: Upload,
       title: "Upload Files",
-      description: "Simply drag and drop your files into HashVault. We handle the rest with automatic encryption"
+      description: "Simply drag and drop your files into HashVault. We store them securely on decentralized networks"
     },
     {
       icon: Key,
-      title: "Automatic Encryption",
-      description: "Files are instantly encrypted using military-grade encryption before being stored on IPFS"
+      title: "Secure Storage",
+      description: "Files are stored on IPFS, ensuring they're always available and resistant to censorship"
     },
     {
       icon: Download,
@@ -136,24 +149,32 @@ export default function HomePage() {
                 Securely on IPFS
               </h1>
               <p className="text-2xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
-                Fast, reliable, and always accessible. Your files are encrypted and stored on decentralized networks.
+                Fast, reliable, and always accessible. Your files are stored on decentralized networks.
               </p>
               <div className="flex items-center justify-center gap-4 pt-8">
-                <Button onClick={() => login()} size="lg" className="px-10 py-7 text-xl group bg-white text-gray-900 hover:bg-gray-100">
-                  Get Started <ArrowRight className="ml-3 w-6 h-6 group-hover:translate-x-1 transition-transform" />
-                </Button>
+                <ConnectButton.Custom>
+                  {({ openConnectModal }) => (
+                    <Button 
+                      onClick={openConnectModal}
+                      size="lg" 
+                      className="px-10 py-7 text-xl group bg-white text-gray-900 hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      Get Started <ArrowRight className="ml-3 w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                    </Button>
+                  )}
+                </ConnectButton.Custom>
               </div>
-              <div className="pt-16 flex flex-col md:flex-row items-center justify-center gap-8 md:gap-16 text-gray-400">
+              <div className="pt-16 flex flex-col md:flex-row items-center justify-center gap-8 md:gap-16 text-white">
                 <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-primary" />
-                  <span className="text-lg font-medium">End-to-end Encryption</span>
+                  <CheckCircle2 className="w-6 h-6 text-white" />
+                  <span className="text-lg font-medium">Secure Storage</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-primary" />
+                  <CheckCircle2 className="w-6 h-6 text-white" />
                   <span className="text-lg font-medium">Decentralized Storage</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-primary" />
+                  <CheckCircle2 className="w-6 h-6 text-white" />
                   <span className="text-lg font-medium">Web3 Native</span>
                 </div>
               </div>
@@ -166,7 +187,7 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/[0.02] to-transparent" />
           <div className="container mx-auto max-w-6xl relative">
             <div className="text-center mb-16">
-              <div className="text-primary mb-4">FEATURES</div>
+              <div className="text-white font-semibold mb-4">FEATURES</div>
               <h2 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
                 Why Choose HashVault?
               </h2>
@@ -192,7 +213,7 @@ export default function HomePage() {
         <section className="py-32 px-4">
           <div className="container mx-auto max-w-6xl">
             <div className="text-center mb-16">
-              <div className="text-primary mb-4">BENEFITS</div>
+              <div className="text-white font-semibold mb-4">BENEFITS</div>
               <h2 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
                 Everything You Need
               </h2>
@@ -200,7 +221,7 @@ export default function HomePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {benefits.map((benefit) => (
                 <div key={benefit.title} className="p-6 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/10 group">
-                  <benefit.icon className="w-8 h-8 text-primary mb-4 group-hover:scale-110 transition-transform" />
+                  <benefit.icon className="w-8 h-8 text-white mb-4 group-hover:scale-110 transition-transform" />
                   <h3 className="text-lg font-semibold mb-2">{benefit.title}</h3>
                   <p className="text-gray-400 text-sm">{benefit.description}</p>
                 </div>
@@ -214,7 +235,7 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/[0.02] to-transparent" />
           <div className="container mx-auto max-w-6xl relative">
             <div className="text-center mb-16">
-              <div className="text-primary mb-4">PROCESS</div>
+              <div className="text-white font-semibold mb-4">PROCESS</div>
               <h2 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
                 How It Works
               </h2>
@@ -250,9 +271,17 @@ export default function HomePage() {
               <p className="text-xl mb-8 text-gray-300 relative">
                 Join the future of decentralized storage today.
               </p>
-              <Button onClick={() => login()} size="lg" className="px-8 py-6 text-lg bg-white text-gray-900 hover:bg-gray-100 relative">
-                Connect Wallet to Begin
-              </Button>
+              <ConnectButton.Custom>
+                {({ openConnectModal }) => (
+                  <Button 
+                    onClick={openConnectModal}
+                    size="lg" 
+                    className="px-8 py-6 text-lg bg-white text-gray-900 hover:bg-gray-100 relative"
+                  >
+                    Connect Wallet to Begin
+                  </Button>
+                )}
+              </ConnectButton.Custom>
             </div>
           </div>
         </section>

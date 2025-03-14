@@ -13,34 +13,28 @@ export function Logo({ size = 40, className = '' }: LogoProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      {/* Outer square with rounded corners */}
-      <rect
-        x="6"
-        y="6"
-        width="28"
-        height="28"
-        rx="8"
+      {/* Hexagon shape representing vault/security */}
+      <path
+        d="M20 4L33.6603 12V28L20 36L6.33975 28V12L20 4Z"
         stroke="currentColor"
-        strokeWidth="3"
+        strokeWidth="2"
         fill="none"
       />
       
-      {/* Abstract vault symbol - intersecting shapes */}
+      {/* Inner hexagon for depth */}
       <path
-        d="M14 14L26 26M26 14L14 26"
+        d="M20 12L27.3301 16V24L20 28L12.6699 24V16L20 12Z"
         stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
+        strokeWidth="1.5"
+        fill="none"
       />
       
-      {/* Center circle */}
+      {/* Center dot */}
       <circle
         cx="20"
         cy="20"
-        r="4"
-        stroke="currentColor"
-        strokeWidth="3"
-        fill="none"
+        r="2"
+        fill="currentColor"
       />
     </svg>
   );

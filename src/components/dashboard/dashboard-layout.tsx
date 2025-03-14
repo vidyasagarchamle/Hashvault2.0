@@ -1,26 +1,24 @@
 'use client';
 
-import { usePrivy } from "@privy-io/react-auth";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
-import { LogOut, Upload, Files } from "lucide-react";
-import { useEffect } from "react";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { LogOut, Upload, Files, Sun, Moon } from "lucide-react";
 import { getWalletAddressFromUser } from '@/lib/wallet-utils';
 import StorageUsage from "./StorageUsage";
+import { useAuth } from "@/lib/hooks/use-auth";
+import { useTheme } from "next-themes";
+import { useState } from "react";
+import { DashboardContent } from "./dashboard-content";
 
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout } = usePrivy();
+export function DashboardLayout() {
+  const { user, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
+  const [currentView, setCurrentView] = useState<'upload' | 'files'>('upload');
 
   const getUserDisplayName = () => {
     // If user has a wallet, show the wallet address
     if (user?.wallet?.address) {
       return `${user.wallet.address.slice(0, 6)}...${user.wallet.address.slice(-4)}`;
-    }
-    
-    // If user has an embedded wallet, show that address
-    if ((user as any)?.embeddedWallet?.address) {
-      return `${(user as any).embeddedWallet.address.slice(0, 6)}...${(user as any).embeddedWallet.address.slice(-4)}`;
     }
     
     // If user has linked accounts with a wallet, show that address
@@ -32,16 +30,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     // Get deterministic wallet address
     const walletAddress = getWalletAddressFromUser(user);
     if (walletAddress) {
-      // For email users, show email instead of the deterministic address
-      if (user?.email?.address) {
-        return user.email.address;
-      }
       return `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
-    }
-    
-    // If user has an email, show that
-    if (user?.email?.address) {
-      return user.email.address;
     }
     
     // Default fallback
@@ -62,7 +51,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <span className="text-sm text-gray-600 dark:text-gray-300">
                 {getUserDisplayName()}
               </span>
-              <ThemeToggle />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white border border-gray-200 dark:border-gray-700"
+                aria-label="Toggle theme"
+              >
+                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -86,26 +83,22 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <ul className="space-y-2">
                 <li>
                   <Button
-                    variant="ghost"
+                    variant={currentView === 'upload' ? 'default' : 'ghost'}
                     className="w-full justify-start"
-                    asChild
+                    onClick={() => setCurrentView('upload')}
                   >
-                    <a href="/dashboard">
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload Files
-                    </a>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload Files
                   </Button>
                 </li>
                 <li>
                   <Button
-                    variant="ghost"
+                    variant={currentView === 'files' ? 'default' : 'ghost'}
                     className="w-full justify-start"
-                    asChild
+                    onClick={() => setCurrentView('files')}
                   >
-                    <a href="/dashboard/files">
-                      <Files className="w-4 h-4 mr-2" />
-                      My Files
-                    </a>
+                    <Files className="w-4 h-4 mr-2" />
+                    My Files
                   </Button>
                 </li>
               </ul>
@@ -118,7 +111,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           {/* Main Content */}
           <div className="col-span-12 md:col-span-9">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-              {children}
+              <DashboardContent view={currentView} />
             </div>
           </div>
         </div>

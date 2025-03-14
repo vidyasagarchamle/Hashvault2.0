@@ -24,10 +24,10 @@ export function generateDeterministicAddress(identifier: string): string {
 }
 
 /**
- * Gets a wallet address from a Privy user object
+ * Gets a wallet address from a user object
  * Tries multiple sources and falls back to a deterministic address if needed
  * 
- * @param user Privy user object
+ * @param user User object from Rainbow Kit or Privy
  * @returns A wallet address or null if none can be determined
  */
 export function getWalletAddressFromUser(user: any): string | null {
@@ -37,6 +37,18 @@ export function getWalletAddressFromUser(user: any): string | null {
   if (user.wallet?.address) {
     console.log('Using connected wallet address');
     return user.wallet.address;
+  }
+  
+  // For Rainbow Kit, the address is directly on the user object
+  if (typeof user === 'string' && user.startsWith('0x')) {
+    console.log('Using direct address from Rainbow Kit');
+    return user;
+  }
+  
+  // For Rainbow Kit user object structure
+  if (user.id && user.id.startsWith('0x')) {
+    console.log('Using id as address from Rainbow Kit user');
+    return user.id;
   }
   
   if ((user as any).embeddedWallet?.address) {
