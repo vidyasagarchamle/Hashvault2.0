@@ -6,8 +6,14 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['formidable'],
   },
-  // Note: The api.bodyParser config is no longer needed in Next.js App Router
-  // Instead, we use route segment config exports in each route.ts file
+  // Set body parser size limit for API routes
+  api: {
+    bodyParser: {
+      sizeLimit: '4mb', // Limit for chunk uploads
+    },
+    responseLimit: false,
+  },
+  // Note: The api.bodyParser config is used by Next.js to limit request sizes
 };
 
 module.exports = nextConfig; 

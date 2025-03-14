@@ -15,11 +15,9 @@ if (!fs.existsSync(TEMP_DIR)) {
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30; // 30 seconds is enough for chunk uploads
 
-// Set the maximum request body size to 4MB (Vercel's limit is 4.5MB for hobby plan)
-// This allows for a 2MB chunk plus metadata overhead
-export const bodySize = {
-  sizeLimit: '4mb'
-};
+// The correct way to set request size limits in Next.js App Router
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 export async function POST(request: NextRequest) {
   try {

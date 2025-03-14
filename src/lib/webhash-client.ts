@@ -241,8 +241,8 @@ export class WebHashClient {
   }
   
   private async chunkedUpload(file: File, walletAddress: string, onProgress?: (progress: number) => void): Promise<any> {
-    // Reduce chunk size to 2MB to avoid 413 Request Entity Too Large errors
-    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunks instead of 5MB
+    // Reduce chunk size to 1MB to ensure we stay well within Vercel's 4.5MB request size limit
+    const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks instead of 2MB
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     let uploadedChunks = 0;
     let uploadId = Date.now().toString(); // Simple unique ID for this upload
