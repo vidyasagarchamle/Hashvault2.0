@@ -15,6 +15,9 @@ import { base } from "wagmi/chains";
 // Base USDT address: https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
 const USDT_CONTRACT_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
+// Default decimals for USDT on Base
+const DEFAULT_DECIMALS = 6;
+
 // ERC20 ABI with symbol and decimals functions
 const ERC20_ABI = [
   {
@@ -41,7 +44,7 @@ const ERC20_ABI = [
     "stateMutability": "view",
     "type": "function"
   }
-];
+] as const;
 
 interface StoragePurchaseProps {
   onClose: () => void;
@@ -55,6 +58,8 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
   const { switchChain } = useSwitchChain();
   const [loading, setLoading] = useState(false);
   const [isCorrectNetwork, setIsCorrectNetwork] = useState(false);
+  const [tokenDecimalsValue, setTokenDecimalsValue] = useState<number>(DEFAULT_DECIMALS);
+  const [displaySymbol, setDisplaySymbol] = useState<string>('USDT');
 
   // Read token symbol to verify we're using the right token
   const { data: tokenSymbol } = useReadContract({
@@ -77,15 +82,28 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
     setIsCorrectNetwork(chainId === base.id);
   }, [chainId]);
 
-  // Log token information when available
+  // Update token symbol when available
   useEffect(() => {
-    if (tokenSymbol) {
+    if (tokenSymbol && typeof tokenSymbol === 'string') {
+      setDisplaySymbol(tokenSymbol);
       console.log(`Token symbol: ${tokenSymbol}`);
     }
+  }, [tokenSymbol]);
+
+  // Update token decimals when available
+  useEffect(() => {
     if (tokenDecimals !== undefined) {
-      console.log(`Token decimals: ${tokenDecimals}`);
+      // Ensure tokenDecimals is treated as a number
+      const decimalsValue = typeof tokenDecimals === 'number' 
+        ? tokenDecimals 
+        : typeof tokenDecimals === 'bigint'
+          ? Number(tokenDecimals)
+          : DEFAULT_DECIMALS;
+      
+      setTokenDecimalsValue(decimalsValue);
+      console.log(`Token decimals: ${decimalsValue}`);
     }
-  }, [tokenSymbol, tokenDecimals]);
+  }, [tokenDecimals]);
 
   const handleSwitchNetwork = async () => {
     try {
@@ -112,21 +130,20 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
     }
 
     // Verify we're using USDT
-    if (tokenSymbol !== 'USDT' && tokenSymbol !== 'USDbC') {
-      toast.error(`Wrong token detected: ${tokenSymbol}. Expected USDT.`);
+    if (displaySymbol !== 'USDT' && displaySymbol !== 'USDbC') {
+      toast.error(`Wrong token detected: ${displaySymbol}. Expected USDT.`);
       return;
     }
 
     try {
       setLoading(true);
       
-      // Use the actual decimals from the token contract or fallback to 6
-      const usdtDecimals = tokenDecimals ?? 6;
+      console.log(`Using token decimals: ${tokenDecimalsValue}`);
       
       // Convert USD price to USDT amount with proper decimals
-      const usdtAmount = parseUnits(STORAGE_PLAN_PRICE.toString(), usdtDecimals);
+      const usdtAmount = parseUnits(STORAGE_PLAN_PRICE.toString(), tokenDecimalsValue);
       
-      console.log(`Sending ${STORAGE_PLAN_PRICE} ${tokenSymbol} on Base network with ${usdtDecimals} decimals`);
+      console.log(`Sending ${STORAGE_PLAN_PRICE} ${displaySymbol} on Base network with ${tokenDecimalsValue} decimals`);
       
       // Send USDT transaction using the ERC20 transfer function
       const txHash = await walletClient.writeContract({
@@ -150,7 +167,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
         },
         body: JSON.stringify({
           transactionHash: txHash,
-          paymentMethod: tokenSymbol || 'USDT',
+          paymentMethod: displaySymbol,
           network: 'Base'
         })
       });
@@ -221,7 +238,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
               onClick={handlePurchase}
               disabled={loading || !ready || !isConnected || !address || !walletClient || !isCorrectNetwork}
             >
-              {loading ? 'Processing...' : `Purchase Now with ${tokenSymbol || 'USDT'}`}
+              {loading ? 'Processing...' : `Purchase Now with ${displaySymbol}`}
             </Button>
           )}
         </div>
@@ -230,7 +247,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
           <p>• Storage space is added to your account immediately after purchase</p>
           <p>• One-time payment, no recurring fees</p>
           <p>• Purchase multiple plans if you need more space</p>
-          <p>• Payment will be processed in {tokenSymbol || 'USDT'} on the Base network</p>
+          <p>• Payment will be processed in {displaySymbol} on the Base network</p>
           <p className="font-medium text-blue-600 dark:text-blue-400">• You must be connected to Base network to make a payment</p>
         </div>
       </div>
