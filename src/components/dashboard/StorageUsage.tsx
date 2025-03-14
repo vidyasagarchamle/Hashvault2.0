@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { FREE_STORAGE_LIMIT } from '@/lib/constants';
@@ -36,7 +35,7 @@ export default function StorageUsage() {
   const { user } = useAuth();
   const { address } = useAccount();
   const [storageInfo, setStorageInfo] = useState<StorageInfo>(DEFAULT_STORAGE_INFO);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showPurchase, setShowPurchase] = useState(false);
   const [apiError, setApiError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -48,15 +47,13 @@ export default function StorageUsage() {
   const lastFetchTime = useRef<number>(0);
   const MIN_FETCH_INTERVAL = 10000; // 10 seconds minimum between fetches
 
-  const fetchStorageInfo = useCallback(async (force = false) => {
-    // Get wallet address from user object or direct from wagmi
-    const walletAddress = getWalletAddressFromUser(user) || address;
-    
+  // Get wallet address for display
+  const walletAddress = getWalletAddressFromUser(user) || address;
+
+  // Function to fetch storage info
+  async function fetchStorageInfo(force = false) {
     if (!walletAddress) {
       console.log("No wallet address available for storage info");
-      if (isMounted.current) {
-        setLoading(false);
-      }
       return;
     }
     
@@ -64,10 +61,6 @@ export default function StorageUsage() {
     const now = Date.now();
     if (!force && now - lastFetchTime.current < MIN_FETCH_INTERVAL) {
       console.log("Skipping fetch - too soon since last fetch");
-      // Make sure loading is false even if we skip the fetch
-      if (isMounted.current && loading) {
-        setLoading(false);
-      }
       return;
     }
     
@@ -85,7 +78,6 @@ export default function StorageUsage() {
         headers: {
           'Authorization': walletAddress
         },
-        // Add cache control headers
         cache: 'no-store'
       });
 
@@ -104,58 +96,43 @@ export default function StorageUsage() {
           purchased: data.totalStoragePurchased || 0
         });
         setApiError(false);
-        // Explicitly set loading to false after data is received
-        setLoading(false);
       }
     } catch (error) {
       console.error('Error fetching storage info:', error);
       
-      // Keep existing data if we have it, otherwise use default
       if (isMounted.current) {
         setApiError(true);
-        // Ensure loading is set to false even on error
-        setLoading(false);
       }
     } finally {
       if (isMounted.current) {
         setRefreshing(false);
+        setLoading(false);
       }
     }
-  }, [user, address, loading]);
+  }
 
   // Listen for storage updates
   useEffect(() => {
     const handleStorageUpdate = () => {
-      fetchStorageInfo(true); // Force refresh when storage is updated
+      fetchStorageInfo(true);
     };
 
     storageUpdateEvent.addEventListener(STORAGE_UPDATED, handleStorageUpdate);
     return () => {
       storageUpdateEvent.removeEventListener(STORAGE_UPDATED, handleStorageUpdate);
     };
-  }, [fetchStorageInfo]);
+  }, [walletAddress]);
 
-  // Only fetch on initial mount and when user/address changes
+  // Fetch on initial mount and when wallet address changes
   useEffect(() => {
-    // Set initial state
-    setLoading(true);
+    if (walletAddress) {
+      fetchStorageInfo(true);
+    }
     
-    // Set a timeout to ensure loading state doesn't get stuck
-    const timeoutId = setTimeout(() => {
-      if (isMounted.current && loading) {
-        console.log("Loading timeout reached, forcing loading to false");
-        setLoading(false);
-      }
-    }, 3000); // 3 seconds timeout
-    
-    fetchStorageInfo();
-    
-    // Cleanup function
     return () => {
-      clearTimeout(timeoutId);
       isMounted.current = false;
     };
-  }, [fetchStorageInfo, loading]);
+  }, [walletAddress]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -164,9 +141,6 @@ export default function StorageUsage() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
-
-  // Get wallet address for display
-  const walletAddress = getWalletAddressFromUser(user) || address;
 
   if (!walletAddress) {
     return (
@@ -182,25 +156,6 @@ export default function StorageUsage() {
   const usagePercentage = (storageInfo.used / storageInfo.total) * 100;
   const freeStorageUsed = Math.min(storageInfo.used, FREE_STORAGE_LIMIT);
   const freeStoragePercentage = (freeStorageUsed / FREE_STORAGE_LIMIT) * 100;
-
-  // Debug info
-  console.log("Storage display info:", {
-    storageInfo,
-    usagePercentage,
-    freeStorageUsed,
-    freeStoragePercentage,
-    FREE_STORAGE_LIMIT,
-    loading, // Add loading state to debug output
-    apiError
-  });
-
-  // Force loading to false if we have data
-  useEffect(() => {
-    if (loading && storageInfo.total > 0) {
-      console.log("Forcing loading to false because we have data");
-      setLoading(false);
-    }
-  }, [storageInfo, loading]);
 
   return (
     <Card className="p-4">
@@ -226,8 +181,7 @@ export default function StorageUsage() {
           </div>
         </div>
 
-        {/* Only show loading state if we don't have any data yet */}
-        {loading && storageInfo.used === 0 && storageInfo.total === FREE_STORAGE_LIMIT ? (
+        {loading ? (
           <div className="animate-pulse space-y-4">
             <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
             <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded"></div>
