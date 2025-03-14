@@ -1,30 +1,29 @@
 'use client';
 
 import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowkit';
-import { WagmiConfig, createConfig } from 'wagmi';
-import { mainnet, base } from 'wagmi/chains';
-import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTheme } from 'next-themes';
 import '@rainbow-me/rainbowkit/styles.css';
 import { ReactNode, useState, useEffect } from 'react';
+import { WagmiProvider, createConfig, http } from 'wagmi';
+import { base, mainnet } from 'wagmi/chains';
+import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 
 // Ensure we have a valid project ID - hardcoded for reliability
 const projectId = 'c6c9bacd35167d2e3c2ed97d3a51a7c0';
 
-// Create the wagmi config with explicit autoConnect
-const wagmiConfig = getDefaultConfig({
+// Create the wagmi config with RainbowKit's getDefaultConfig
+const config = getDefaultConfig({
   appName: 'HashVault',
   projectId: projectId,
   chains: [base, mainnet],
+  transports: {
+    [base.id]: http(),
+    [mainnet.id]: http(),
+  },
+  // Enable auto-connect for better user experience
   ssr: true,
 });
-
-// Modify the config to enable autoConnect
-const config = {
-  ...wagmiConfig,
-  autoConnect: true
-};
 
 // Create a new QueryClient for React Query with longer cache times
 const queryClient = new QueryClient({
@@ -59,7 +58,7 @@ export function RainbowKitClientProvider({ children }: { children: ReactNode }) 
 
   return (
     <QueryClientProvider client={queryClient}>
-      <WagmiConfig config={config}>
+      <WagmiProvider config={config}>
         <RainbowKitProvider
           theme={theme === 'dark' ? darkTheme({
             accentColor: '#ffffff',
@@ -72,10 +71,11 @@ export function RainbowKitClientProvider({ children }: { children: ReactNode }) 
           })}
           modalSize="compact"
           showRecentTransactions={true}
+          coolMode
         >
           {children}
         </RainbowKitProvider>
-      </WagmiConfig>
+      </WagmiProvider>
     </QueryClientProvider>
   );
 } 
