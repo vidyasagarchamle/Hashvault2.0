@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { STORAGE_PLAN_SIZE, STORAGE_PLAN_PRICE } from '@/lib/constants';
 import { storageUpdateEvent, STORAGE_UPDATED } from "./StorageUsage";
 import { parseUnits } from "viem";
-import { useAccount, useWalletClient } from "wagmi";
+import { useAccount, useWalletClient, useChainId, useSwitchChain } from "wagmi";
 import { useAuth } from "@/lib/hooks/use-auth";
+import { base } from "wagmi/chains";
 
 // USDT Contract address on Base network
 const USDT_CONTRACT_ADDRESS = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"; // Base USDT address
@@ -35,11 +36,37 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
   const { ready } = useAuth();
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
   const [loading, setLoading] = useState(false);
+  const [isCorrectNetwork, setIsCorrectNetwork] = useState(false);
+
+  // Check if user is on Base network
+  useEffect(() => {
+    setIsCorrectNetwork(chainId === base.id);
+  }, [chainId]);
+
+  const handleSwitchNetwork = async () => {
+    try {
+      setLoading(true);
+      await switchChain({ chainId: base.id });
+      toast.success('Switched to Base network');
+    } catch (error) {
+      console.error('Failed to switch network:', error);
+      toast.error('Failed to switch network. Please try manually.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handlePurchase = async () => {
     if (!ready || !isConnected || !address || !walletClient) {
       toast.error('Please connect your wallet first');
+      return;
+    }
+
+    if (!isCorrectNetwork) {
+      toast.error('Please switch to Base network first');
       return;
     }
 
@@ -53,7 +80,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
       // For USDT, 1 USDT = 1 USD, so the conversion is straightforward
       const usdtAmount = parseUnits(STORAGE_PLAN_PRICE.toString(), usdtDecimals);
       
-      console.log(`Sending ${STORAGE_PLAN_PRICE} USDT`);
+      console.log(`Sending ${STORAGE_PLAN_PRICE} USDT on Base network`);
       
       // Send USDT transaction using the ERC20 transfer function
       const txHash = await walletClient.writeContract({
@@ -129,13 +156,28 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
             </div>
           </div>
 
-          <Button
-            className="w-full"
-            onClick={handlePurchase}
-            disabled={loading || !ready || !isConnected || !address || !walletClient}
-          >
-            {loading ? 'Processing...' : 'Purchase Now'}
-          </Button>
+          {!isCorrectNetwork && isConnected ? (
+            <div className="mb-4">
+              <div className="p-3 bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 rounded-md mb-3 text-sm">
+                Please switch to Base network to continue with the purchase.
+              </div>
+              <Button 
+                className="w-full" 
+                onClick={handleSwitchNetwork}
+                disabled={loading}
+              >
+                {loading ? 'Switching...' : 'Switch to Base Network'}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              className="w-full"
+              onClick={handlePurchase}
+              disabled={loading || !ready || !isConnected || !address || !walletClient || !isCorrectNetwork}
+            >
+              {loading ? 'Processing...' : 'Purchase Now with USDT'}
+            </Button>
+          )}
         </div>
 
         <div className="text-xs text-gray-500">
@@ -143,7 +185,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
           <p>• One-time payment, no recurring fees</p>
           <p>• Purchase multiple plans if you need more space</p>
           <p>• Payment will be processed in USDT on the Base network</p>
-          <p>• Make sure your wallet is connected to the Base network</p>
+          <p className="font-medium text-blue-600 dark:text-blue-400">• You must be connected to Base network to make a payment</p>
         </div>
       </div>
     </Card>
