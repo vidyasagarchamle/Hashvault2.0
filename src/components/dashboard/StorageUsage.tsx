@@ -168,9 +168,9 @@ export default function StorageUsage() {
     return (
       <Card className="p-4">
         <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          <div className="h-2 bg-gray-200 rounded"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+          <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
         </div>
       </Card>
     );
@@ -182,6 +182,16 @@ export default function StorageUsage() {
   const usagePercentage = (info.used / info.total) * 100;
   const freeStorageUsed = Math.min(info.used, FREE_STORAGE_LIMIT);
   const freeStoragePercentage = (freeStorageUsed / FREE_STORAGE_LIMIT) * 100;
+
+  // Debug info
+  console.log("Storage display info:", {
+    storageInfo,
+    info,
+    usagePercentage,
+    freeStorageUsed,
+    freeStoragePercentage,
+    FREE_STORAGE_LIMIT
+  });
 
   return (
     <Card className="p-4">
@@ -215,7 +225,7 @@ export default function StorageUsage() {
 
         <div className="space-y-2">
           <div>
-            <p className="text-xs text-gray-500 mb-1">Free Storage ({formatBytes(FREE_STORAGE_LIMIT)})</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Free Storage ({formatBytes(FREE_STORAGE_LIMIT)})</p>
             <Progress 
               value={freeStoragePercentage} 
               className={cn(
@@ -227,7 +237,7 @@ export default function StorageUsage() {
 
           {info.purchased > 0 && (
             <div>
-              <p className="text-xs text-gray-500 mb-1">Purchased Storage ({formatBytes(info.purchased)})</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Purchased Storage ({formatBytes(info.purchased)})</p>
               <Progress 
                 value={(info.used - freeStorageUsed) / info.purchased * 100} 
                 className="h-2"
@@ -236,7 +246,7 @@ export default function StorageUsage() {
           )}
         </div>
 
-        <div className="flex justify-between text-xs text-gray-500">
+        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
           <span>
             {formatBytes(info.remaining)} remaining
           </span>
