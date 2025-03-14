@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema({
     required: false,
     unique: true,
     sparse: true,
-    default: null,
+    default: undefined,
   },
   name: {
     type: String,
@@ -82,6 +82,9 @@ userSchema.methods.updateStorageUsage = async function(bytesUsed: number): Promi
 userSchema.pre('save', function(next) {
   if (this.totalAvailableStorage < FREE_STORAGE_LIMIT) {
     this.totalAvailableStorage = FREE_STORAGE_LIMIT;
+  }
+  if (!this.email) {
+    this.email = undefined;
   }
   next();
 });

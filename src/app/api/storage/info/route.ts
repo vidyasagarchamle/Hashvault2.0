@@ -76,6 +76,7 @@ export async function GET(req: Request) {
           totalStorageUsed: 0,
           totalStoragePurchased: 0,
           totalAvailableStorage: FREE_STORAGE_LIMIT,
+          // Don't set email field at all
         });
         await newUser.save();
         console.log('New user created successfully');
