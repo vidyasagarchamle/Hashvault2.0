@@ -20,8 +20,15 @@ const config = getDefaultConfig({
   ssr: true,
 });
 
-// Create a new QueryClient for React Query
-const queryClient = new QueryClient();
+// Create a new QueryClient for React Query with longer cache times
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60000, // 1 minute
+      gcTime: 900000, // 15 minutes
+    },
+  },
+});
 
 export function RainbowKitClientProvider({ children }: { children: ReactNode }) {
   const { theme } = useTheme();
@@ -58,6 +65,7 @@ export function RainbowKitClientProvider({ children }: { children: ReactNode }) 
             borderRadius: 'medium',
           })}
           modalSize="compact"
+          showRecentTransactions={true}
         >
           {children}
         </RainbowKitProvider>

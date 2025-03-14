@@ -4,6 +4,7 @@ import { ToasterProvider } from "@/components/providers/toaster-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ClientWrapper } from "@/components/providers/client-wrapper";
 import { RainbowKitClientProvider } from "@/components/providers/rainbow-provider";
+import { WalletPersistenceProvider } from "@/components/providers/wallet-persistence-provider";
 import { Metadata } from "next";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -41,11 +42,13 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <RainbowKitClientProvider>
-            <ClientWrapper>
-              <div className="flex flex-col min-h-screen">
-                {children}
-              </div>
-            </ClientWrapper>
+            <WalletPersistenceProvider>
+              <ClientWrapper>
+                <div className="flex flex-col min-h-screen">
+                  {children}
+                </div>
+              </ClientWrapper>
+            </WalletPersistenceProvider>
             <ToasterProvider />
           </RainbowKitClientProvider>
         </ThemeProvider>
