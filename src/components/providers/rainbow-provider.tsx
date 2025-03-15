@@ -113,6 +113,11 @@ export function RainbowKitClientProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     setMounted(true);
     console.log("RainbowKitClientProvider mounted with projectId:", projectId);
+    console.log("Environment variables check:", {
+      hasProjectId: !!process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+      projectIdValue: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+      isUsingPlaceholder: projectId === 'YOUR_WALLETCONNECT_PROJECT_ID'
+    });
     
     // Force reconnection attempt on page load
     if (typeof window !== 'undefined') {
