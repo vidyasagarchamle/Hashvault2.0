@@ -11,7 +11,14 @@ import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { cookieStorage, createStorage } from 'wagmi';
 
 // Ensure we have a valid project ID - hardcoded for reliability
-const projectId = 'c6c9bacd35167d2e3c2ed97d3a51a7c0';
+// IMPORTANT: This project ID must be replaced with a valid WalletConnect project ID
+// Get your project ID at https://cloud.walletconnect.com/
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_WALLETCONNECT_PROJECT_ID';
+
+// Add a warning if using the placeholder
+if (projectId === 'YOUR_WALLETCONNECT_PROJECT_ID') {
+  console.warn('WARNING: You are using a placeholder WalletConnect project ID. Please replace it with a valid project ID from https://cloud.walletconnect.com/');
+}
 
 // Create a hybrid storage that combines localStorage and cookies for better persistence
 const hybridStorage = {
