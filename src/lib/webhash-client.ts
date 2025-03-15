@@ -181,7 +181,11 @@ export class WebHashClient {
     formData.append('file', file);
     
     // Upload to WebHash IPFS endpoint through our proxy API with retry logic
-    console.debug('Uploading to WebHash IPFS endpoint via proxy...');
+    console.debug('Uploading to WebHash IPFS endpoint via proxy...', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type
+    });
     
     // Retry logic
     let retries = 3;
@@ -203,6 +207,12 @@ export class WebHashClient {
         
         // If we got a response but it's an error, handle based on status
         const errorText = await response.text();
+        console.error('Upload error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        
         lastError = new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
         
         // Don't retry for client errors (4xx)
@@ -229,15 +239,20 @@ export class WebHashClient {
       throw lastError || new Error('Upload failed after multiple retries');
     }
 
-    const output = await response.json();
-    console.debug('WebHash upload response:', output);
-    
-    if (onProgress) {
-      onProgress(100);
+    try {
+      const output = await response.json();
+      console.debug('WebHash upload response:', output);
+      
+      if (onProgress) {
+        onProgress(100);
+      }
+      
+      // Continue with the rest of the upload process
+      return this.finalizeUpload(output, file, walletAddress);
+    } catch (error) {
+      console.error('Error parsing WebHash response:', error);
+      throw new Error('Failed to parse WebHash response: ' + (error instanceof Error ? error.message : String(error)));
     }
-    
-    // Continue with the rest of the upload process
-    return this.finalizeUpload(output, file, walletAddress);
   }
   
   private async chunkedUpload(file: File, walletAddress: string, onProgress?: (progress: number) => void): Promise<any> {
@@ -390,7 +405,7 @@ export class WebHashClient {
   
   private async finalizeUpload(output: any, file: File, walletAddress: string): Promise<any> {
     // Extract CID from the response
-    const cid = output.cid || output.hash;
+    const cid = output.cid || output.hash || output.Hash;
     if (!cid) {
       throw new Error('No CID returned from WebHash API');
     }
@@ -398,22 +413,33 @@ export class WebHashClient {
     // Save metadata to our database
     let metadataResponse;
     try {
+      console.debug('Saving metadata to database:', {
+        cid,
+        fileName: file.name,
+        size: file.size.toString(),
+        mimeType: file.type || this.guessMimeType(file.name),
+        walletAddress
+      });
+      
       metadataResponse = await fetch('/api/upload', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': walletAddress
         },
         body: JSON.stringify({
-          cid,
           fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-          walletAddress,
+          cid: cid,
+          size: file.size.toString(),
+          mimeType: file.type || this.guessMimeType(file.name),
+          walletAddress: walletAddress,
         }),
       });
 
       if (!metadataResponse.ok) {
-        throw new Error(`Failed to save metadata: ${metadataResponse.statusText}`);
+        const errorText = await metadataResponse.text();
+        console.error('Metadata save error response:', errorText);
+        throw new Error(`Failed to save metadata: ${errorText || metadataResponse.statusText}`);
       }
 
       const metadataResult = await metadataResponse.json();
