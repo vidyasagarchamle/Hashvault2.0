@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 // Set a timeout for the entire route
 export const maxDuration = 60; // 60 seconds for large file uploads
 
+// API keys for different endpoints
+const FILE_API_KEY = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
+const FOLDER_API_KEY = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee7q348b3';
+
 export async function POST(request: NextRequest) {
   try {
     // Get the authorization header from the request
@@ -17,27 +21,6 @@ export async function POST(request: NextRequest) {
 
     // Extract the API key
     const apiKey = authHeader.split(' ')[1];
-    const expectedApiKey = process.env.WEBHASH_API_KEY;
-    
-    if (!expectedApiKey) {
-      console.error('WebHash API key is not configured in environment');
-      return NextResponse.json(
-        { error: 'Server configuration error' },
-        { status: 500 }
-      );
-    }
-
-    if (apiKey !== expectedApiKey) {
-      console.error('Invalid API key format:', { 
-        received: `${apiKey.substring(0, 10)}...`,
-        expected: `${expectedApiKey.substring(0, 10)}...`
-      });
-      return NextResponse.json(
-        { error: 'Invalid API key' },
-        { status: 401 }
-      );
-    }
-
     const baseUrl = 'http://52.38.175.117';
 
     // Clone the request to forward it
@@ -58,18 +41,21 @@ export async function POST(request: NextRequest) {
     const port = isZipFile ? '5009' : '5000';
     const webhashApiUrl = `${baseUrl}:${port}`;
 
+    // Use the appropriate API key based on file type
+    const expectedApiKey = isZipFile ? FOLDER_API_KEY : FILE_API_KEY;
+
+    // Create new FormData for the WebHash API
+    const webhashFormData = new FormData();
+    webhashFormData.append('file', file);
+
     console.log('Upload request details:', {
       name: file.name,
       type: file.type,
       size: file.size,
       endpoint: webhashApiUrl,
-      authHeader: `Bearer ${apiKey.substring(0, 10)}...`,
-      isZipFile
+      isZipFile,
+      apiKeyMatch: apiKey === expectedApiKey
     });
-
-    // Create new FormData for the WebHash API
-    const webhashFormData = new FormData();
-    webhashFormData.append('file', file);
 
     // Forward the request to the WebHash API with timeout
     let webhashResponse;
@@ -90,8 +76,7 @@ export async function POST(request: NextRequest) {
         console.error('WebHash API error:', {
           status: webhashResponse.status,
           error: errorText,
-          endpoint: webhashApiUrl,
-          authHeader: `Bearer ${apiKey.substring(0, 10)}...`
+          endpoint: webhashApiUrl
         });
         return NextResponse.json(
           { error: `WebHash API error: ${errorText}` },

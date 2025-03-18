@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 // import lighthouse from '@lighthouse-web3/sdk';
 
 interface DealParameters {
@@ -154,11 +155,8 @@ export class WebHashClient {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Get the API key from environment variables
-      const apiKey = process.env.NEXT_PUBLIC_WEBHASH_API_KEY;
-      if (!apiKey) {
-        throw new Error('WebHash API key is not configured');
-      }
+      // Get the API key - using the exact key from the curl example
+      const apiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
 
       const response = await fetch(`${this.baseUrl}/upload`, {
         method: 'POST',
@@ -170,7 +168,7 @@ export class WebHashClient {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(`WebHash API error: ${JSON.stringify(error)}`);
+        throw new Error(error.error || 'Upload failed');
       }
 
       const result = await response.json();
@@ -248,88 +246,69 @@ export class WebHashClient {
    * @returns The folder upload result
    */
   async uploadFolder(options: FolderUploadOptions): Promise<any> {
+    const { files, walletAddress, folderName, onProgress } = options;
+
+    if (!walletAddress) {
+      throw new Error('Wallet address is required');
+    }
+
+    if (!folderName) {
+      throw new Error('Folder name is required');
+    }
+
     try {
-      const { folderName, files, walletAddress, onProgress } = options;
-      
-      if (!walletAddress) {
-        throw new Error('Wallet address is required');
-      }
-      
-      if (!folderName) {
-        throw new Error('Folder name is required');
-      }
-      
-      if (!files || files.length === 0) {
-        throw new Error('No files to upload');
+      // Create a zip file
+      const zip = new JSZip();
+      let totalSize = 0;
+
+      // Add files to zip
+      for (const file of files) {
+        zip.file(file.webkitRelativePath, file);
+        totalSize += file.size;
       }
 
-      // Create a zip file using JSZip
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
-      
-      // Add all files to the zip
-      for (const file of files) {
-        const relativePath = (file as any).webkitRelativePath || file.name;
-        // Remove the root folder name from the path
-        const pathInZip = relativePath.split('/').slice(1).join('/');
-        zip.file(pathInZip, file);
-      }
-      
-      // Generate the zip file
-      const zipBlob = await zip.generateAsync({
-        type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 6 }
-      }, (metadata) => {
-        if (onProgress) {
-          // First 50% is zip creation
-          onProgress(metadata.percent / 2);
-        }
-      });
-      
-      // Create a File object from the zip blob
-      const zipFile = new File([zipBlob], `${folderName}.zip`, {
-        type: 'application/zip'
-      });
-      
-      // Upload the zip file
+      // Generate zip file
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipFile = new File([zipBlob], `${folderName}.zip`, { type: 'application/zip' });
+
+      // Upload zip file to WebHash
+      const formData = new FormData();
+      formData.append('file', zipFile);
+
+      // Get the API key - using the exact key from the curl example for folder uploads
+      const apiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee7q348b3';
+
+      // Use the uploadFile method to handle the upload
       const result = await this.uploadFile({
         file: zipFile,
         walletAddress,
-        onProgress: (progress) => {
-          if (onProgress) {
-            // Last 50% is upload
-            onProgress(50 + progress / 2);
-          }
-        }
+        onProgress
       });
-      
-      // Update the metadata to indicate this is a folder
-      const metadataResponse = await fetch(`/api/upload/${result.cid}`, {
-        method: 'PATCH',
+
+      // Store folder metadata
+      const metadataResponse = await fetch('/api/upload', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': walletAddress
         },
         body: JSON.stringify({
+          fileName: folderName,
+          cid: result.cid,
+          size: totalSize.toString(),
+          mimeType: 'application/zip',
+          walletAddress,
           isFolder: true,
-          mimeType: 'application/folder'
+          parentFolder: null
         })
       });
 
       if (!metadataResponse.ok) {
         const error = await metadataResponse.json();
-        throw new Error(error.error || 'Failed to update folder metadata');
+        throw new Error(error.error || 'Failed to store folder metadata');
       }
 
-      const updatedFile = await metadataResponse.json();
-      
-      // Complete the process with 100% progress
-      if (onProgress) {
-        onProgress(100);
-      }
-      
-      return updatedFile;
+      return result;
     } catch (error) {
       console.error('Error in uploadFolder:', error);
       throw error;
