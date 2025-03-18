@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { WebHashClient } from "@/lib/webhash-client";
 import { getWalletAddressFromUser } from '@/lib/wallet-utils';
 import { useRouter } from 'next/navigation';
-import { storageUpdateEvent, STORAGE_UPDATED } from './StorageUsage';
+import { storageUpdateEvent, STORAGE_UPDATED } from './StoragePurchase';
 import { cn } from "@/lib/utils";
 
 export default function FileUpload() {
@@ -180,7 +180,7 @@ export default function FileUpload() {
       }
       
       // Trigger storage update event
-      storageUpdateEvent.dispatchEvent(new Event(STORAGE_UPDATED));
+      storageUpdateEvent.dispatchEvent();
       
       // Navigate to the dashboard files page
       router.push('/dashboard');
