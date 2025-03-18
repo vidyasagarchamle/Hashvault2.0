@@ -14,6 +14,9 @@ const nextConfig = {
     responseLimit: false,
   },
   // Note: The api.bodyParser config is used by Next.js to limit request sizes
+  images: {
+    domains: ['ipfs.io', 'gateway.ipfs.io'],
+  }
 };
 
 module.exports = nextConfig; 

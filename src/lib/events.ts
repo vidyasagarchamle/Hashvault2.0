@@ -6,30 +6,24 @@
 export class EventEmitter {
   private listeners: Record<string, (() => void)[]> = {};
 
-  constructor(public readonly eventName: string) {}
-
-  public addEventListener(callback: () => void): () => void {
-    if (!this.listeners[this.eventName]) {
-      this.listeners[this.eventName] = [];
+  addEventListener(event: string, callback: () => void) {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
     }
-    
-    this.listeners[this.eventName].push(callback);
-    
-    // Return a function to remove this listener
-    return () => {
-      this.listeners[this.eventName] = this.listeners[this.eventName]
-        .filter(listener => listener !== callback);
-    };
+    this.listeners[event].push(callback);
   }
 
-  public dispatchEvent(): void {
-    if (!this.listeners[this.eventName]) return;
-    
-    for (const callback of this.listeners[this.eventName]) {
-      callback();
-    }
+  removeEventListener(event: string, callback: () => void) {
+    if (!this.listeners[event]) return;
+    this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+  }
+
+  dispatchEvent(event: string) {
+    if (!this.listeners[event]) return;
+    this.listeners[event].forEach(callback => callback());
   }
 }
 
-// Predefined events
-export const storageUpdateEvent = new EventEmitter('storage-updated'); 
+// Create event emitter for storage updates
+export const STORAGE_UPDATED = 'storage_updated';
+export const storageUpdateEvent = new EventEmitter(); 

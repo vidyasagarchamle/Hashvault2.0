@@ -6,7 +6,7 @@ import { Upload, X, FileIcon, Image, Music, FileText, Video, FolderUp } from "lu
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { WebHashClient } from '@/lib/webhash-client';
-import { storageUpdateEvent } from "@/lib/events";
+import { storageUpdateEvent, STORAGE_UPDATED } from "@/lib/events";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useAccount } from "wagmi";
 import { getWalletAddressFromUser } from "@/lib/wallet-utils";
@@ -15,6 +15,11 @@ import { cn } from "@/lib/utils";
 import { UploadIcon, FolderIcon } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { CloudUploadIcon } from "lucide-react";
+
+// Initialize toast on the window object
+if (typeof window !== 'undefined') {
+  (window as any).toast = toast;
+}
 
 interface FileUploadProps {
   onUploadComplete?: () => void;
@@ -45,42 +50,8 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
   const router = useRouter();
   const [files, setFiles] = useState<UploadingFile[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadStartTime, setUploadStartTime] = useState<number | null>(null);
-  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-
-  // Format seconds into a readable time format
-  const formatTime = (seconds: number): string => {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-  };
-
-  // Update time remaining estimate
-  useEffect(() => {
-    if (!uploading || !uploadStartTime || files.length === 0) {
-      setEstimatedTimeRemaining(null);
-      return;
-    }
-
-    const updateEstimate = () => {
-      const timeElapsed = (Date.now() - uploadStartTime) / 1000; // in seconds
-      const totalProgress = files.reduce((sum, file) => sum + file.progress, 0) / files.length;
-      
-      if (totalProgress > 0 && timeElapsed > 0) {
-        const estimatedTotalTime = (timeElapsed / totalProgress) * 100;
-        const timeRemaining = Math.max(0, estimatedTotalTime - timeElapsed);
-        setEstimatedTimeRemaining(formatTime(timeRemaining));
-      }
-    };
-
-    // Initial update
-    updateEstimate();
-
-    // Update every second
-    const interval = setInterval(updateEstimate, 1000);
-    return () => clearInterval(interval);
-  }, [uploading, uploadStartTime, files]);
 
   const handleSelectClick = () => {
     fileInputRef.current?.click();
@@ -104,6 +75,11 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
         // Get folder name from the first file
         const firstFile = Array.from(fileList).find(f => f.webkitRelativePath)!;
         const folderName = firstFile.webkitRelativePath.split('/')[0];
+        
+        // Show toast for zip conversion start
+        toast.info(`Converting folder "${folderName}" to zip file...`, {
+          duration: 10000 // Keep the message visible longer since zip creation might take time
+        });
         
         // Create a zip file using JSZip
         const JSZip = (await import('jszip')).default;
@@ -135,6 +111,9 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
           size: formatBytes(zipFile.size),
           isFolder: false
         }]);
+
+        // Show success toast for zip conversion
+        toast.success(`Folder "${folderName}" converted successfully!`);
       } catch (error) {
         console.error('Error creating zip file:', error);
         toast.error('Failed to process folder. Please try again.');
@@ -163,7 +142,6 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
 
     try {
       setUploading(true);
-      setUploadStartTime(Date.now());
 
       // Check storage limits
       const totalSize = files.reduce((sum, file) => sum + file.file.size, 0);
@@ -214,7 +192,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       if (folderInputRef.current) folderInputRef.current.value = '';
 
       // Trigger storage update
-      storageUpdateEvent.dispatchEvent();
+      storageUpdateEvent.dispatchEvent(STORAGE_UPDATED);
 
       toast.success('Upload completed successfully!');
       
@@ -226,7 +204,6 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       toast.error('Failed to upload. Please try again.');
     } finally {
       setUploading(false);
-      setUploadStartTime(null);
     }
   };
 
@@ -332,11 +309,6 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
                 </div>
                 <div className="flex items-center space-x-4">
                   <span className="text-xs text-gray-400">{uploadingFile.size}</span>
-                  {uploadingFile.progress > 0 && (
-                    <span className="text-xs text-gray-400">
-                      {Math.round(uploadingFile.progress)}%
-                    </span>
-                  )}
                   <button
                     onClick={() => removeFile(index)}
                     className="text-gray-400 hover:text-red-500"
@@ -351,15 +323,6 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
 
         {/* Upload button and progress */}
         <div className="flex flex-col space-y-2">
-          {uploading && (
-            <div className="text-sm text-gray-500 dark:text-gray-400 flex justify-between">
-              <span>{getTotalProgress() < 100 ? `${Math.round(getTotalProgress())}% complete` : "Finalizing..."}</span>
-              {estimatedTimeRemaining && getTotalProgress() < 95 && (
-                <span>~{estimatedTimeRemaining} remaining</span>
-              )}
-            </div>
-          )}
-          
           <div className="flex justify-end">
             <Button
               variant="default"
@@ -369,13 +332,8 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
             >
               {uploading ? (
                 <>
-                  <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mr-2">
-                    <div
-                      className="bg-blue-600 dark:bg-blue-400 h-2.5 rounded-full transition-all duration-300"
-                      style={{ width: `${getTotalProgress()}%` }}
-                    ></div>
-                  </div>
-                  <span>{getTotalProgress() < 100 ? "Uploading..." : "Finalizing..."}</span>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Uploading...</span>
                 </>
               ) : (
                 <>

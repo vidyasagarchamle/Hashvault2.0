@@ -9,6 +9,7 @@ import { FREE_STORAGE_LIMIT } from '@/lib/constants';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { StoragePurchase } from './StoragePurchase';
 import { getWalletAddressFromUser } from '@/lib/wallet-utils';
+import { storageUpdateEvent, STORAGE_UPDATED } from '@/lib/events';
 
 /**
  * Format bytes to human-readable format
@@ -91,17 +92,11 @@ export default function StorageUsage() {
       fetchStorage();
     };
 
-    // Import the event from StoragePurchase
-    try {
-      const { storageUpdateEvent, STORAGE_UPDATED } = require('./StoragePurchase');
-      storageUpdateEvent.addEventListener(STORAGE_UPDATED, handleStorageUpdate);
-      
-      return () => {
-        storageUpdateEvent.removeEventListener(STORAGE_UPDATED, handleStorageUpdate);
-      };
-    } catch (error) {
-      console.error('Failed to set up storage update listener:', error);
-    }
+    storageUpdateEvent.addEventListener(STORAGE_UPDATED, handleStorageUpdate);
+    
+    return () => {
+      storageUpdateEvent.removeEventListener(STORAGE_UPDATED, handleStorageUpdate);
+    };
   }, []);
 
   // Calculate usage percentage

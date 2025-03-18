@@ -257,6 +257,14 @@ export class WebHashClient {
     }
 
     try {
+      // Show initial toast for zip conversion
+      if (typeof window !== 'undefined') {
+        const toast = window.toast;
+        if (toast) {
+          toast.info('Converting folder to zip file...');
+        }
+      }
+
       // Create a zip file
       const zip = new JSZip();
       let totalSize = 0;
@@ -270,6 +278,14 @@ export class WebHashClient {
       // Generate zip file
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const zipFile = new File([zipBlob], `${folderName}.zip`, { type: 'application/zip' });
+
+      // Show toast for upload starting
+      if (typeof window !== 'undefined') {
+        const toast = window.toast;
+        if (toast) {
+          toast.info('Starting folder upload...');
+        }
+      }
 
       // Upload zip file to WebHash
       const formData = new FormData();
@@ -308,8 +324,23 @@ export class WebHashClient {
         throw new Error(error.error || 'Failed to store folder metadata');
       }
 
+      // Show success toast
+      if (typeof window !== 'undefined') {
+        const toast = window.toast;
+        if (toast) {
+          toast.success('Folder uploaded successfully!');
+        }
+      }
+
       return result;
     } catch (error) {
+      // Show error toast
+      if (typeof window !== 'undefined') {
+        const toast = window.toast;
+        if (toast) {
+          toast.error('Failed to upload folder: ' + (error as Error).message);
+        }
+      }
       console.error('Error in uploadFolder:', error);
       throw error;
     }
