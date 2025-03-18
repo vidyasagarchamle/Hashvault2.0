@@ -6,7 +6,7 @@ import { Upload, X, FileIcon, Image, Music, FileText, Video, FolderUp } from "lu
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { WebHashClient } from '@/lib/webhash-client';
-import { storageUpdateEvent, STORAGE_UPDATED } from "@/components/dashboard/StorageUsage";
+import { storageUpdateEvent, STORAGE_UPDATED } from "@/components/dashboard/StoragePurchase";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useAccount } from "wagmi";
 import { getWalletAddressFromUser } from "@/lib/wallet-utils";
@@ -148,7 +148,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       if (folderInputRef.current) folderInputRef.current.value = '';
 
       // Trigger storage update
-      storageUpdateEvent.dispatchEvent(new Event(STORAGE_UPDATED));
+      storageUpdateEvent.dispatchEvent();
 
       toast.success('All files uploaded successfully!');
       

@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { STORAGE_PLAN_SIZE, STORAGE_PLAN_PRICE } from '@/lib/constants';
-import { storageUpdateEvent, STORAGE_UPDATED } from "./StorageUsage";
 import { parseUnits } from "viem";
 import { useAccount, useWalletClient, useChainId, useSwitchChain } from "wagmi";
 import { useAuth } from "@/lib/hooks/use-auth";
@@ -34,6 +33,32 @@ const ERC20_ABI = [
     "type": "function"
   }
 ] as const;
+
+// Create a simple event emitter for storage updates
+export const STORAGE_UPDATED = 'storage_updated';
+const createEvent = () => {
+  const listeners: Function[] = [];
+  return {
+    addEventListener: (event: string, callback: Function) => {
+      if (event === STORAGE_UPDATED) {
+        listeners.push(callback);
+      }
+    },
+    removeEventListener: (event: string, callback: Function) => {
+      if (event === STORAGE_UPDATED) {
+        const index = listeners.indexOf(callback);
+        if (index > -1) {
+          listeners.splice(index, 1);
+        }
+      }
+    },
+    dispatchEvent: () => {
+      listeners.forEach(callback => callback());
+    }
+  };
+};
+
+export const storageUpdateEvent = createEvent();
 
 interface StoragePurchaseProps {
   onClose: () => void;
@@ -125,7 +150,7 @@ export function StoragePurchase({ onClose }: StoragePurchaseProps) {
       toast.success('Successfully purchased additional storage!');
       
       // Trigger storage update
-      storageUpdateEvent.dispatchEvent(new Event(STORAGE_UPDATED));
+      storageUpdateEvent.dispatchEvent();
       
       // Close the modal
       onClose();

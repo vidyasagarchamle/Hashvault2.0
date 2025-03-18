@@ -1,275 +1,188 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { useEffect, useState } from 'react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { FREE_STORAGE_LIMIT } from '@/lib/constants';
-import { cn } from "@/lib/utils";
-import { StoragePurchase } from "./StoragePurchase";
-import { useAuth } from "@/lib/hooks/use-auth";
-import { useAccount } from "wagmi";
-import { getWalletAddressFromUser } from "@/lib/wallet-utils";
-import { RefreshCw } from "lucide-react";
+import { useAuth } from '@/lib/hooks/use-auth';
+import { StoragePurchase } from './StoragePurchase';
+import { getWalletAddressFromUser } from '@/lib/wallet-utils';
 
-interface StorageInfo {
-  used: number;
-  total: number;
-  remaining: number;
-  purchased: number;
+/**
+ * Format bytes to human-readable format
+ */
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 }
 
-// Create a custom event for storage updates
-export const storageUpdateEvent = new EventTarget();
-export const STORAGE_UPDATED = 'storage_updated';
+/**
+ * Storage information type
+ */
+interface StorageInfo {
+  totalStorageUsed: number;
+  totalAvailableStorage: number;
+  filesCount: number;
+}
 
-// Default storage info for fallback
-const DEFAULT_STORAGE_INFO: StorageInfo = {
-  used: 0,
-  total: FREE_STORAGE_LIMIT,
-  remaining: FREE_STORAGE_LIMIT,
-  purchased: 0
-};
-
+/**
+ * Storage Usage Component
+ * Displays current storage usage information for the user
+ */
 export default function StorageUsage() {
   const { user } = useAuth();
-  const { address, isConnected } = useAccount();
-  const [storageInfo, setStorageInfo] = useState<StorageInfo>(DEFAULT_STORAGE_INFO);
   const [loading, setLoading] = useState(false);
   const [showPurchase, setShowPurchase] = useState(false);
-  const [apiError, setApiError] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  
-  // Use a ref to track if the component is mounted
-  const isMounted = useRef(true);
-  
-  // Use a ref to track the last fetch time to prevent excessive calls
-  const lastFetchTime = useRef<number>(0);
-  const MIN_FETCH_INTERVAL = 10000; // 10 seconds minimum between fetches
-  
-  // Store the current wallet address in a ref to detect changes
-  const prevWalletAddressRef = useRef<string | undefined | null>(null);
+  const [storage, setStorage] = useState<StorageInfo>({
+    totalStorageUsed: 0,
+    totalAvailableStorage: FREE_STORAGE_LIMIT,
+    filesCount: 0
+  });
 
-  // Get wallet address for display
-  const walletAddress = getWalletAddressFromUser(user) || address;
-
-  // Function to fetch storage info
-  async function fetchStorageInfo(force = false) {
-    if (!walletAddress) {
-      console.log("No wallet address available for storage info");
-      return;
-    }
-    
-    // Check if we've fetched recently and this isn't a forced refresh
-    const now = Date.now();
-    if (!force && now - lastFetchTime.current < MIN_FETCH_INTERVAL) {
-      console.log("Skipping fetch - too soon since last fetch");
-      return;
-    }
-    
-    // Update last fetch time
-    lastFetchTime.current = now;
+  /**
+   * Fetch storage information from the API
+   */
+  async function fetchStorage() {
+    const walletAddress = getWalletAddressFromUser(user);
+    if (!walletAddress) return;
 
     try {
-      if (isMounted.current) {
-        setRefreshing(true);
-      }
-      
-      console.log("Fetching storage info with address:", walletAddress);
-      // Try to fetch from API
-      const response = await fetch('/api/storage/info', {
-        headers: {
-          'Authorization': walletAddress
-        },
+      setLoading(true);
+      const res = await fetch('/api/storage/info', {
+        headers: { 'Authorization': walletAddress },
         cache: 'no-store'
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch storage info');
+      
+      if (!res.ok) {
+        throw new Error(`Failed to fetch storage info: ${res.status}`);
       }
 
-      const data = await response.json();
-      console.log("Storage info received:", data);
+      const data = await res.json();
       
-      if (isMounted.current) {
-        setStorageInfo({
-          used: data.totalStorageUsed || 0,
-          total: data.totalAvailableStorage || FREE_STORAGE_LIMIT,
-          remaining: data.remainingStorage || FREE_STORAGE_LIMIT,
-          purchased: data.totalStoragePurchased || 0
+      if (data && typeof data.totalStorageUsed === 'number') {
+        setStorage({
+          totalStorageUsed: data.totalStorageUsed,
+          totalAvailableStorage: Math.max(FREE_STORAGE_LIMIT, data.totalAvailableStorage || FREE_STORAGE_LIMIT),
+          filesCount: data.filesCount || 0
         });
-        setApiError(false);
       }
     } catch (error) {
-      console.error('Error fetching storage info:', error);
-      
-      if (isMounted.current) {
-        setApiError(true);
-      }
+      console.error('Failed to fetch storage info:', error);
     } finally {
-      if (isMounted.current) {
-        setRefreshing(false);
-        setLoading(false);
-      }
+      setLoading(false);
     }
   }
 
-  // Listen for storage updates
+  // Fetch storage info when user connects
+  useEffect(() => {
+    if (user?.wallet?.address) {
+      fetchStorage();
+    }
+  }, [user?.wallet?.address]);
+
+  // Listen for storage update events
   useEffect(() => {
     const handleStorageUpdate = () => {
-      fetchStorageInfo(true);
+      fetchStorage();
     };
 
-    storageUpdateEvent.addEventListener(STORAGE_UPDATED, handleStorageUpdate);
-    return () => {
-      storageUpdateEvent.removeEventListener(STORAGE_UPDATED, handleStorageUpdate);
-    };
-  }, [walletAddress]);
-
-  // Fetch on initial mount and when wallet address changes
-  useEffect(() => {
-    // Check if wallet address has changed
-    if (walletAddress !== prevWalletAddressRef.current) {
-      console.log("Wallet address changed, refreshing storage info");
-      prevWalletAddressRef.current = walletAddress;
+    // Import the event from StoragePurchase
+    try {
+      const { storageUpdateEvent, STORAGE_UPDATED } = require('./StoragePurchase');
+      storageUpdateEvent.addEventListener(STORAGE_UPDATED, handleStorageUpdate);
       
-      if (walletAddress) {
-        fetchStorageInfo(true);
-      } else {
-        // Reset to default if wallet disconnected
-        setStorageInfo(DEFAULT_STORAGE_INFO);
-      }
+      return () => {
+        storageUpdateEvent.removeEventListener(STORAGE_UPDATED, handleStorageUpdate);
+      };
+    } catch (error) {
+      console.error('Failed to set up storage update listener:', error);
     }
-    
-    return () => {
-      isMounted.current = false;
-    };
-  }, [walletAddress, isConnected]);
-  
-  // Also listen for connection status changes
-  useEffect(() => {
-    if (isConnected && walletAddress) {
-      console.log("Wallet connected, refreshing storage info");
-      fetchStorageInfo(true);
-    } else if (!isConnected) {
-      console.log("Wallet disconnected, resetting storage info");
-      setStorageInfo(DEFAULT_STORAGE_INFO);
-    }
-  }, [isConnected]);
+  }, []);
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
+  // Calculate usage percentage
+  const usagePercent = (storage.totalStorageUsed / storage.totalAvailableStorage) * 100;
+  const displayPercent = storage.totalStorageUsed > 0 ? Math.max(1, Math.min(100, usagePercent)) : 0;
 
-  if (!walletAddress) {
+  if (!user) {
     return (
       <Card className="p-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Please connect your wallet to view storage information.
-        </p>
+        <p className="text-sm text-gray-500">Connect your wallet to view storage usage</p>
       </Card>
     );
   }
 
-  // Calculate usage percentages
-  const usagePercentage = (storageInfo.used / storageInfo.total) * 100;
-  const freeStorageUsed = Math.min(storageInfo.used, FREE_STORAGE_LIMIT);
-  const freeStoragePercentage = (freeStorageUsed / FREE_STORAGE_LIMIT) * 100;
-
   return (
     <Card className="p-4">
       <div className="space-y-4">
-        <div className="flex items-center justify-between mb-2">
+        {/* Header */}
+        <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium">Storage Usage</h3>
           <div className="flex items-center gap-2">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => fetchStorageInfo(true)} 
-              disabled={refreshing}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchStorage}
+              disabled={loading}
               className="p-1 h-auto"
+              aria-label="Refresh storage info"
             >
               <RefreshCw className={cn(
                 "w-4 h-4 text-gray-500",
-                refreshing && "animate-spin"
+                loading && "animate-spin"
               )} />
             </Button>
-            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full dark:bg-blue-900 dark:text-blue-100">
-              Free Tier
+            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+              {storage.filesCount} {storage.filesCount === 1 ? 'File' : 'Files'}
             </span>
           </div>
         </div>
 
-        {loading ? (
-          <div className="animate-pulse space-y-4">
-            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded"></div>
-            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
+        {/* Usage Bar */}
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs text-gray-500 mb-1">
+            <span>
+              {formatBytes(storage.totalStorageUsed)} of {formatBytes(storage.totalAvailableStorage)}
+            </span>
+            <span>{usagePercent.toFixed(1)}%</span>
           </div>
-        ) : (
-          <>
-            {apiError && (
-              <div className="text-xs text-amber-600 dark:text-amber-400 mb-2">
-                Using estimated storage data. API connection failed.
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Free Storage ({formatBytes(FREE_STORAGE_LIMIT)})
-                </p>
-                <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2 w-full overflow-hidden">
-                  <div 
-                    className={cn(
-                      "h-full rounded-full transition-all",
-                      freeStoragePercentage > 90 ? "bg-red-600" : "bg-blue-600"
-                    )}
-                    style={{ width: `${Math.min(100, Math.max(0, freeStoragePercentage))}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {storageInfo.purchased > 0 && (
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    Purchased Storage ({formatBytes(storageInfo.purchased)})
-                  </p>
-                  <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2 w-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-600 rounded-full transition-all"
-                      style={{ 
-                        width: `${Math.min(100, Math.max(0, (storageInfo.used - freeStorageUsed) / storageInfo.purchased * 100))}%` 
-                      }}
-                    ></div>
-                  </div>
-                </div>
+          <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-300",
+                usagePercent > 90 ? "bg-red-600" : "bg-blue-600"
               )}
-            </div>
+              style={{ width: `${displayPercent}%` }}
+              role="progressbar"
+              aria-valuenow={Math.round(usagePercent)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            />
+          </div>
+        </div>
 
-            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-              <span>
-                {formatBytes(storageInfo.remaining)} remaining
-              </span>
-              <span>{Math.round(usagePercentage)}% used</span>
-            </div>
-          </>
-        )}
+        {/* Storage Info */}
+        <div className="flex justify-between text-xs text-gray-500">
+          <span>{formatBytes(storage.totalAvailableStorage - storage.totalStorageUsed)} available</span>
+          <span>{storage.filesCount} {storage.filesCount === 1 ? 'file' : 'files'} stored</span>
+        </div>
 
+        {/* Purchase Button */}
         <Button
           variant="default"
           size="sm"
           onClick={() => setShowPurchase(true)}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-500 dark:hover:bg-blue-600"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
         >
           Purchase More Storage
         </Button>
       </div>
 
+      {/* Purchase Modal */}
       {showPurchase && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full mx-4">
