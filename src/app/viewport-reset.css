@@ -1,0 +1,41 @@
+/* Aggressive viewport reset to eliminate whitespace */
+
+html, body {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body > div,
+#__next,
+#__next > div,
+main,
+section,
+footer {
+  min-height: 0 !important;
+  height: auto !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* Clean viewport - force removal of bottom whitespace */
+html::after {
+  content: '';
+  display: block;
+  height: 0;
+  clear: both;
+}
+
+/* Apply to the root div in page.tsx */
+.root-container {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  display: block !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+} 
