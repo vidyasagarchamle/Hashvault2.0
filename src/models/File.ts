@@ -23,6 +23,18 @@ const fileSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  isFolder: {
+    type: Boolean,
+    default: false,
+  },
+  parentFolder: {
+    type: String,
+    default: null,
+  },
+  folderPath: {
+    type: String,
+    default: "",
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -39,6 +51,8 @@ const fileSchema = new mongoose.Schema({
 
 // Add index for faster queries on walletAddress and createdAt
 fileSchema.index({ walletAddress: 1, createdAt: -1 });
+fileSchema.index({ walletAddress: 1, isFolder: 1 });
+fileSchema.index({ parentFolder: 1 });
 
 // Define interface for type safety
 export interface IFile extends mongoose.Document {
@@ -47,6 +61,9 @@ export interface IFile extends mongoose.Document {
   size: string;
   mimeType: string;
   walletAddress: string;
+  isFolder: boolean;
+  parentFolder: string | null;
+  folderPath: string;
   createdAt: Date;
   updatedAt: Date;
 }

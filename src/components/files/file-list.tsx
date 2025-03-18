@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Download, FileIcon, Image, FileText, Film, Link, Music, Archive, Code, ExternalLink } from 'lucide-react';
+import { Download, FileIcon, Image, FileText, Film, Link, Music, Archive, Code, ExternalLink, Folder, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { WebHashClient } from '@/lib/webhash-client';
@@ -17,9 +17,13 @@ interface FileItem {
   mimeType: string;
   lastUpdate: string;
   formattedSize: string;
+  isFolder?: boolean;
+  parentFolder?: string | null;
+  folderPath?: string;
 }
 
-const getFileIcon = (mimeType: string) => {
+const getFileIcon = (mimeType: string, isFolder: boolean = false) => {
+  if (isFolder) return Folder;
   if (mimeType.startsWith('image/')) return Image;
   if (mimeType.startsWith('video/')) return Film;
   if (mimeType.startsWith('audio/')) return Music;
@@ -30,7 +34,8 @@ const getFileIcon = (mimeType: string) => {
   return FileIcon;
 };
 
-const getFileColor = (mimeType: string): string => {
+const getFileColor = (mimeType: string, isFolder: boolean = false): string => {
+  if (isFolder) return 'text-yellow-500';
   if (mimeType.startsWith('image/')) return 'text-blue-500';
   if (mimeType.startsWith('video/')) return 'text-purple-500';
   if (mimeType.startsWith('audio/')) return 'text-pink-500';
@@ -58,6 +63,8 @@ export function FileList() {
   const { user } = useAuth();
   const { address } = useAccount();
   const [currentWallet, setCurrentWallet] = useState<string | null>(null);
+  const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+  const [folderHistory, setFolderHistory] = useState<string[]>([]);
 
   const loadFiles = useCallback(async (walletAddress: string) => {
     if (!walletAddress) {
@@ -87,6 +94,30 @@ export function FileList() {
       loadFiles(walletAddress);
     }
   }, [user, address, currentWallet, loadFiles]);
+
+  // Function to navigate into a folder
+  const navigateToFolder = (folderId: string) => {
+    setFolderHistory(prev => [...prev, currentFolder || '']);
+    setCurrentFolder(folderId);
+  };
+
+  // Function to navigate back
+  const navigateBack = () => {
+    if (folderHistory.length > 0) {
+      const previousFolder = folderHistory[folderHistory.length - 1];
+      setCurrentFolder(previousFolder === '' ? null : previousFolder);
+      setFolderHistory(prev => prev.slice(0, -1));
+    } else {
+      setCurrentFolder(null);
+    }
+  };
+
+  // Filter files based on current folder
+  const filteredFiles = files.filter(file => 
+    currentFolder === null 
+      ? file.parentFolder === null || file.parentFolder === undefined
+      : file.parentFolder === currentFolder
+  );
 
   const handleDownload = async (file: FileItem) => {
     try {
@@ -148,39 +179,58 @@ export function FileList() {
 
   return (
     <div className={scrollableContainerClass}>
+      {currentFolder && (
+        <div className="mb-4 flex items-center">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={navigateBack}
+            className="text-sm text-gray-600 dark:text-gray-300 flex items-center"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Back to parent folder
+          </Button>
+        </div>
+      )}
+      
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 pb-4">
-        {files.map((file) => {
-          const FileIconComponent = getFileIcon(file.mimeType);
-          const isImage = file.mimeType.startsWith('image/');
+        {filteredFiles.map((file) => {
+          const FileIconComponent = getFileIcon(file.mimeType, file.isFolder);
+          const isImage = !file.isFolder && file.mimeType.startsWith('image/');
           const fileUrl = `https://ipfs.io/ipfs/${file.cid}`;
-          const iconColor = getFileColor(file.mimeType);
+          const iconColor = getFileColor(file.mimeType, file.isFolder);
 
           return (
-            <Card key={file.cid} className="overflow-hidden bg-white dark:bg-gray-800 hover:shadow-lg transition-shadow">
-              <div className="h-48 relative bg-gray-50 dark:bg-gray-900 cursor-pointer" onClick={() => handleView(file)}>
-                {isImage ? (
-                  <div className="w-full h-full relative">
-                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
-                      <FileIconComponent className={`w-16 h-16 ${iconColor} animate-pulse`} />
-                    </div>
-                    <img
-                      src={fileUrl}
-                      alt={file.fileName}
-                      className="absolute inset-0 w-full h-full object-contain"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.parentElement!.querySelector('.bg-gray-100')!.classList.remove('animate-pulse');
-                      }}
-                      loading="lazy"
-                    />
+            <Card 
+              key={file.cid} 
+              className={`overflow-hidden bg-white dark:bg-gray-800 hover:shadow-lg transition-shadow cursor-pointer ${file.isFolder ? 'border-2 border-yellow-500/30 dark:border-yellow-500/20' : ''}`}
+              onClick={file.isFolder ? () => navigateToFolder(file.cid) : undefined}
+            >
+              <div className={`h-48 relative bg-gray-50 dark:bg-gray-900 ${file.isFolder ? 'cursor-pointer' : ''}`}
+                   onClick={file.isFolder ? () => navigateToFolder(file.cid) : () => handleView(file)}>
+                
+                {file.isFolder && (
+                  <div className="absolute top-2 right-2 bg-yellow-500/20 text-yellow-700 dark:text-yellow-500 font-semibold text-xs py-1 px-2 rounded-md">
+                    Folder
                   </div>
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                    <FileIconComponent className={`w-20 h-20 ${iconColor}`} />
-                    <span className="text-sm text-gray-500 dark:text-gray-400 font-medium px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800">
-                      {file.mimeType.split('/')[1]?.toUpperCase() || 'FILE'}
-                    </span>
-                  </div>
+                )}
+
+                <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                  <FileIconComponent className={`w-20 h-20 ${iconColor}`} />
+                  <span className="text-sm text-gray-500 dark:text-gray-400 font-medium px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800">
+                    {file.isFolder ? 'FOLDER' : file.mimeType.split('/')[1]?.toUpperCase() || 'FILE'}
+                  </span>
+                </div>
+                {isImage && (
+                  <img
+                    src={fileUrl}
+                    alt={file.fileName}
+                    className="absolute inset-0 w-full h-full object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                    loading="lazy"
+                  />
                 )}
               </div>
               <div className="p-4">
@@ -204,30 +254,54 @@ export function FileList() {
                     variant="ghost"
                     size="sm"
                     className="h-6 w-6 p-0"
-                    onClick={() => copyToClipboard(file.cid)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      copyToClipboard(file.cid);
+                    }}
                   >
                     <Link className="w-4 h-4" />
                   </Button>
                 </div>
                 <div className="mt-4 flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleDownload(file)}
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleView(file)}
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    View
-                  </Button>
+                  {!file.isFolder && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownload(file);
+                        }}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleView(file);
+                        }}
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        View
+                      </Button>
+                    </>
+                  )}
+                  {file.isFolder && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="flex-1 bg-yellow-500/80 hover:bg-yellow-600 text-white"
+                      onClick={() => navigateToFolder(file.cid)}
+                    >
+                      <ChevronRight className="w-4 h-4 mr-2" />
+                      Open Folder
+                    </Button>
+                  )}
                 </div>
               </div>
             </Card>

@@ -6,11 +6,15 @@ import { Upload, X, FileIcon, Image, Music, FileText, Video, FolderUp } from "lu
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { WebHashClient } from '@/lib/webhash-client';
-import { storageUpdateEvent, STORAGE_UPDATED } from "@/components/dashboard/StoragePurchase";
+import { storageUpdateEvent } from "@/lib/events";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useAccount } from "wagmi";
 import { getWalletAddressFromUser } from "@/lib/wallet-utils";
 import { useRouter } from 'next/navigation';
+import { cn } from "@/lib/utils";
+import { UploadIcon, FolderIcon } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { CloudUploadIcon } from "lucide-react";
 
 interface FileUploadProps {
   onUploadComplete?: () => void;
@@ -20,7 +24,20 @@ interface UploadingFile {
   file: File;
   progress: number;
   relativePath?: string;
+  size: string;
+  isFolder: boolean;
 }
+
+// Utility function to format bytes into human readable format
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
 export function FileUpload({ onUploadComplete }: FileUploadProps) {
   const { user } = useAuth();
@@ -73,13 +90,62 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
     folderInputRef.current?.click();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files || []);
-    if (selectedFiles.length > 0) {
-      const newFiles: UploadingFile[] = selectedFiles.map(file => ({
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = event.target.files;
+    if (!fileList) return;
+
+    // Check if this is a folder upload
+    const isFolder = Array.from(fileList).some(file => 
+      file.webkitRelativePath && file.webkitRelativePath.includes('/')
+    );
+
+    if (isFolder) {
+      try {
+        // Get folder name from the first file
+        const firstFile = Array.from(fileList).find(f => f.webkitRelativePath)!;
+        const folderName = firstFile.webkitRelativePath.split('/')[0];
+        
+        // Create a zip file using JSZip
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+        
+        // Add all files to the zip
+        for (const file of Array.from(fileList)) {
+          const relativePath = file.webkitRelativePath.split('/').slice(1).join('/');
+          const buffer = await file.arrayBuffer();
+          zip.file(relativePath, buffer);
+        }
+        
+        // Generate the zip file
+        const zipBlob = await zip.generateAsync({
+          type: 'blob',
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 }
+        });
+        
+        // Create a File object from the zip blob
+        const zipFile = new File([zipBlob], `${folderName}.zip`, {
+          type: 'application/zip'
+        });
+
+        // Add the zip file to the files state
+        setFiles([{
+          file: zipFile,
+          progress: 0,
+          size: formatBytes(zipFile.size),
+          isFolder: false
+        }]);
+      } catch (error) {
+        console.error('Error creating zip file:', error);
+        toast.error('Failed to process folder. Please try again.');
+      }
+    } else {
+      // Regular file upload - handle as before
+      const newFiles = Array.from(fileList).map(file => ({
         file,
         progress: 0,
-        relativePath: (file as any).webkitRelativePath || file.name
+        size: formatBytes(file.size),
+        isFolder: false
       }));
       setFiles(newFiles);
     }
@@ -88,7 +154,6 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
   const handleUpload = async () => {
     if (files.length === 0) return;
 
-    // Get wallet address from user object or direct from wagmi
     const walletAddress = getWalletAddressFromUser(user) || address;
     
     if (!walletAddress) {
@@ -100,7 +165,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       setUploading(true);
       setUploadStartTime(Date.now());
 
-      // Check storage limits first
+      // Check storage limits
       const totalSize = files.reduce((sum, file) => sum + file.file.size, 0);
       
       const storageCheckResponse = await fetch('/api/storage/check', {
@@ -120,8 +185,9 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
         return;
       }
 
-      // Upload files using WebHash
       const client = WebHashClient.getInstance();
+
+      // Upload each file
       const uploadPromises = files.map(async (uploadingFile, index) => {
         try {
           await client.uploadFile({
@@ -150,15 +216,14 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
       // Trigger storage update
       storageUpdateEvent.dispatchEvent();
 
-      toast.success('All files uploaded successfully!');
+      toast.success('Upload completed successfully!');
       
-      // Use the onUploadComplete callback to switch to the files view
       if (onUploadComplete) {
         onUploadComplete();
       }
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error('Failed to upload some files. Please try again.');
+      toast.error('Failed to upload. Please try again.');
     } finally {
       setUploading(false);
       setUploadStartTime(null);
@@ -204,6 +269,8 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
           onChange={handleFileChange}
           className="hidden"
           {...{ webkitdirectory: "", directory: "" } as any}
+          multiple
+          disabled={uploading}
         />
 
         {/* Upload buttons */}
@@ -229,51 +296,58 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
             <div className="text-center space-y-2">
               <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Upload Folder</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Select an entire folder
+                Select an entire folder structure
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Maintains subfolder organization
               </p>
             </div>
           </div>
         </div>
 
-        {/* Selected files */}
-        {files.length > 0 && (
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
-            <div className="font-medium text-gray-900 dark:text-gray-100 mb-2">Selected Files ({files.length})</div>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {files.map((uploadingFile, index) => (
-                <div key={index} className="flex items-center justify-between p-2 rounded-md bg-gray-50 dark:bg-gray-900/50">
-                  <div className="flex items-center space-x-2 flex-1 min-w-0">
-                    {getFileTypeIcon(uploadingFile.file.type)}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm truncate text-gray-700 dark:text-gray-300" title={uploadingFile.relativePath || uploadingFile.file.name}>
-                        {uploadingFile.relativePath || uploadingFile.file.name}
-                      </div>
-                      {uploadingFile.progress > 0 && uploadingFile.progress < 100 && (
-                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-1">
-                          <div
-                            className="bg-blue-600 dark:bg-blue-400 h-1.5 rounded-full transition-all duration-300"
-                            style={{ width: `${uploadingFile.progress}%` }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                      {(uploadingFile.file.size / (1024 * 1024)).toFixed(2)} MB
+        {/* Selected Files List */}
+        <div className="mt-4">
+          {files.length > 0 && (
+            <div className="text-sm text-gray-500 mb-2">
+              Selected {files[0].isFolder ? 'Folder' : `Files (${files.length})`}
+            </div>
+          )}
+          <div className="space-y-2">
+            {files.map((uploadingFile, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between p-2 bg-gray-800 rounded-lg"
+              >
+                <div className="flex items-center space-x-2">
+                  {uploadingFile.isFolder ? (
+                    <FolderIcon className="h-5 w-5 text-yellow-500" />
+                  ) : (
+                    <FileIcon className="h-5 w-5 text-blue-500" />
+                  )}
+                  <span className="text-sm text-gray-300">
+                    {uploadingFile.isFolder 
+                      ? uploadingFile.file.webkitRelativePath.split('/')[0]  // Show folder name
+                      : uploadingFile.file.name}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className="text-xs text-gray-400">{uploadingFile.size}</span>
+                  {uploadingFile.progress > 0 && (
+                    <span className="text-xs text-gray-400">
+                      {Math.round(uploadingFile.progress)}%
                     </span>
-                  </div>
+                  )}
                   <button
                     onClick={() => removeFile(index)}
-                    className="ml-2 text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400"
-                    aria-label="Remove file"
-                    disabled={uploading}
+                    className="text-gray-400 hover:text-red-500"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
 
         {/* Upload button and progress */}
         <div className="flex flex-col space-y-2">

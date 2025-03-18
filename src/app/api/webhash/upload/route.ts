@@ -5,32 +5,39 @@ export const maxDuration = 60; // 60 seconds for large file uploads
 
 export async function POST(request: NextRequest) {
   try {
-    // Get the WebHash API URL and key from environment variables
-    const webhashApiUrl = process.env.NEXT_PUBLIC_WEBHASH_API_URL || 'http://52.38.175.117:5000';
-    const webhashApiKey = process.env.NEXT_PUBLIC_WEBHASH_API_KEY;
-
-    if (!webhashApiKey) {
-      console.error('WebHash API key is not configured');
+    // Get the authorization header from the request
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('Invalid or missing Authorization header:', authHeader);
       return NextResponse.json(
-        { error: 'WebHash API key is not configured' },
-        { status: 500 }
+        { error: 'Invalid or missing Authorization header' },
+        { status: 401 }
       );
     }
 
-    console.log('Proxying request to WebHash API:', webhashApiUrl);
+    // Extract the API key and verify it matches the expected format
+    const apiKey = authHeader.split(' ')[1];
+    const expectedApiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
+    
+    if (apiKey !== expectedApiKey) {
+      console.error('Invalid API key format:', { 
+        received: `${apiKey.substring(0, 10)}...`,
+        expected: `${expectedApiKey.substring(0, 10)}...`
+      });
+      return NextResponse.json(
+        { error: 'Invalid API key' },
+        { status: 401 }
+      );
+    }
+
+    const baseUrl = 'http://52.38.175.117';
 
     // Clone the request to forward it
     const formData = await request.formData();
     
-    // Log the file being uploaded
+    // Get the file and check if it's a zip file (folder upload)
     const file = formData.get('file') as File;
-    if (file) {
-      console.log('Uploading file:', {
-        name: file.name,
-        type: file.type,
-        size: file.size
-      });
-    } else {
+    if (!file) {
       console.error('No file found in request');
       return NextResponse.json(
         { error: 'No file found in request' },
@@ -38,71 +45,75 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Determine which endpoint to use based on file type
+    const isZipFile = file.type === 'application/zip' || file.name.endsWith('.zip');
+    const port = isZipFile ? '5009' : '5000';
+    const webhashApiUrl = `${baseUrl}:${port}`;
+
+    console.log('Upload request details:', {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      endpoint: webhashApiUrl,
+      authHeader: `Bearer ${apiKey.substring(0, 10)}...`,
+      isZipFile
+    });
+
+    // Create new FormData for the WebHash API
+    const webhashFormData = new FormData();
+    webhashFormData.append('file', file);
+
     // Forward the request to the WebHash API with timeout
     let webhashResponse;
     try {
       webhashResponse = await fetch(`${webhashApiUrl}/upload`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${webhashApiKey}`
+          'Authorization': `Bearer ${expectedApiKey}` // Use the exact API key
         },
-        body: formData,
-        // Add a timeout to prevent hanging requests
+        body: webhashFormData,
         signal: AbortSignal.timeout(50000) // 50 second timeout
       });
-    } catch (fetchError) {
-      console.error('Error fetching from WebHash API:', fetchError);
-      return NextResponse.json(
-        { error: `WebHash API fetch error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}` },
-        { status: 500 }
-      );
-    }
 
-    // If the WebHash API returns an error, return it to the client
-    if (!webhashResponse.ok) {
-      let errorText = '';
-      try {
-        errorText = await webhashResponse.text();
-      } catch (e) {
-        errorText = 'Could not read error response';
+      console.log('WebHash API response status:', webhashResponse.status);
+
+      if (!webhashResponse.ok) {
+        const errorText = await webhashResponse.text();
+        console.error('WebHash API error:', {
+          status: webhashResponse.status,
+          error: errorText,
+          endpoint: webhashApiUrl,
+          authHeader: `Bearer ${apiKey.substring(0, 10)}...`
+        });
+        return NextResponse.json(
+          { error: `WebHash API error: ${errorText}` },
+          { status: webhashResponse.status }
+        );
       }
-      
-      console.error('WebHash API error:', {
-        status: webhashResponse.status,
-        statusText: webhashResponse.statusText,
-        error: errorText
-      });
-      
-      return NextResponse.json(
-        { 
-          error: `WebHash API error: ${webhashResponse.status} ${webhashResponse.statusText}`,
-          details: errorText
-        },
-        { status: webhashResponse.status }
-      );
-    }
 
-    // Return the WebHash API response to the client
-    let webhashData;
-    try {
-      webhashData = await webhashResponse.json();
-      console.log('WebHash API response:', webhashData);
-    } catch (jsonError) {
-      console.error('Error parsing WebHash API response:', jsonError);
-      return NextResponse.json(
-        { error: 'Failed to parse WebHash API response' },
-        { status: 500 }
-      );
+      // Get the response from WebHash
+      const data = await webhashResponse.json();
+      console.log('WebHash API success:', {
+        ...data,
+        endpoint: webhashApiUrl
+      });
+
+      return NextResponse.json(data);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error('Request timed out');
+        return NextResponse.json(
+          { error: 'Request timed out' },
+          { status: 504 }
+        );
+      }
+      console.error('Error during WebHash API request:', error);
+      throw error;
     }
-    
-    return NextResponse.json(webhashData);
   } catch (error) {
-    console.error('Error in WebHash proxy:', error);
+    console.error('Error handling upload:', error);
     return NextResponse.json(
-      { 
-        error: 'Failed to proxy request to WebHash API',
-        details: error instanceof Error ? error.message : String(error)
-      },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
