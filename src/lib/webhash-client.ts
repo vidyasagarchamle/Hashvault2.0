@@ -154,8 +154,11 @@ export class WebHashClient {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Get the API key - using the exact key from the curl example
-      const apiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
+      // Get the API key from environment variables
+      const apiKey = process.env.NEXT_PUBLIC_WEBHASH_API_KEY;
+      if (!apiKey) {
+        throw new Error('WebHash API key is not configured');
+      }
 
       const response = await fetch(`${this.baseUrl}/upload`, {
         method: 'POST',
@@ -167,7 +170,7 @@ export class WebHashClient {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Upload failed');
+        throw new Error(`WebHash API error: ${JSON.stringify(error)}`);
       }
 
       const result = await response.json();

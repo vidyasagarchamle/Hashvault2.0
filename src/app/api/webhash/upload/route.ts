@@ -15,10 +15,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract the API key and verify it matches the expected format
+    // Extract the API key
     const apiKey = authHeader.split(' ')[1];
-    const expectedApiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
+    const expectedApiKey = process.env.WEBHASH_API_KEY;
     
+    if (!expectedApiKey) {
+      console.error('WebHash API key is not configured in environment');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
     if (apiKey !== expectedApiKey) {
       console.error('Invalid API key format:', { 
         received: `${apiKey.substring(0, 10)}...`,
@@ -69,7 +77,7 @@ export async function POST(request: NextRequest) {
       webhashResponse = await fetch(`${webhashApiUrl}/upload`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${expectedApiKey}` // Use the exact API key
+          'Authorization': `Bearer ${expectedApiKey}`
         },
         body: webhashFormData,
         signal: AbortSignal.timeout(50000) // 50 second timeout
