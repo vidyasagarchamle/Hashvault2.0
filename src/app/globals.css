@@ -59,6 +59,12 @@ body {
   margin: 0;
   padding: 0;
   @apply bg-background text-foreground;
+  background: linear-gradient(to bottom, #111827, #1f2937, #111827);
+}
+
+/* Ensure the body gets dark background by default */
+body {
+  @apply dark:bg-gray-900;
 }
 
 /* Next.js specific resets */

@@ -34,7 +34,7 @@ export default function RootLayout({
         <link rel="manifest" href="/site.webmanifest" />
         <meta name="theme-color" content="#4f46e5" />
       </head>
-      <body className={`${inter.className} antialiased bg-gradient-to-b from-gray-900 via-gray-800 to-black`}>
+      <body className={`${inter.className} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
