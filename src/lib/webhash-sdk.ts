@@ -1,4 +1,4 @@
-import { WebhashClient } from 'webhash';
+// import { WebhashClient } from 'webhash';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -10,26 +10,53 @@ interface UploadResponse {
   size: string;
 }
 
+// Define types for WebhashClient
+interface WebhashResponse {
+  Hash: string;
+  Name: string;
+  Size: string;
+  [key: string]: any;
+}
+
+interface WebhashUploadResult {
+  response: WebhashResponse | WebhashResponse[];
+  [key: string]: any;
+}
+
+interface WebhashClient {
+  uploadFile(filePath: string): Promise<WebhashUploadResult>;
+  uploadDir(dirPath: string): Promise<{ response: WebhashResponse[] }>;
+}
+
 // Define a constant for the temp directory
 const TEMP_DIR = path.join(os.tmpdir(), 'hashvault-webhash');
 
 // Singleton class for the WebHash SDK service
 export class WebHashSDKService {
   private static instance: WebHashSDKService;
-  private client: WebhashClient;
+  private client: any;
   private tempDir: string;
   private privateKey: string = '69428d525e41796db7588bf5a896986e156f59e12b8dac10ef19063170d810d7';
 
   private constructor() {
     this.tempDir = TEMP_DIR;
-    
-    // Initialize the WebhashClient with the private key
-    this.client = new WebhashClient(this.privateKey);
+    this.initClient();
     
     // Ensure temp directory exists
     fs.mkdir(this.tempDir, { recursive: true }).catch(err => {
       console.error('Error creating temp directory:', err);
     });
+  }
+
+  private async initClient() {
+    try {
+      // Dynamically import the WebhashClient to avoid TypeScript issues
+      const webhash = await import('webhash');
+      // Initialize the WebhashClient with the private key
+      this.client = new webhash.WebhashClient(this.privateKey);
+    } catch (error) {
+      console.error('Error initializing WebhashClient:', error);
+    }
   }
 
   public static getInstance(): WebHashSDKService {
@@ -50,6 +77,11 @@ export class WebHashSDKService {
     const tempFilePath = path.join(this.tempDir, fileName);
     
     try {
+      // Make sure client is initialized
+      if (!this.client) {
+        await this.initClient();
+      }
+      
       // Write the buffer to a temporary file
       await fs.writeFile(tempFilePath, fileBuffer);
       
@@ -82,6 +114,11 @@ export class WebHashSDKService {
     onProgress?: (progress: number) => void
   ): Promise<UploadResponse> {
     try {
+      // Make sure client is initialized
+      if (!this.client) {
+        await this.initClient();
+      }
+      
       // Upload the file using the SDK
       const result = await this.client.uploadFile(filePath);
       
@@ -104,6 +141,11 @@ export class WebHashSDKService {
     onProgress?: (progress: number) => void
   ): Promise<UploadResponse> {
     try {
+      // Make sure client is initialized
+      if (!this.client) {
+        await this.initClient();
+      }
+      
       // Upload the directory using the SDK
       const result = await this.client.uploadDir(dirPath);
       
