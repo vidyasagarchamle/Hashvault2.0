@@ -1,80 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import FormData from 'form-data';
-import fetch, { Response } from 'node-fetch';
+import { getWebHashSDK } from '@/lib/webhash-sdk';
+import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 
 // Temporary directory for storing chunks
 const TEMP_DIR = path.join(os.tmpdir(), 'hashvault-uploads');
 
-// New way to configure route options in Next.js App Router
-export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Maximum allowed for Vercel hobby plan
+// Set a timeout for the request
+export const maxDuration = 60; // 60 seconds for finalizing uploads
 
 export async function POST(request: NextRequest) {
   let uploadDir = '';
   let tempFilePath = '';
-  
+
   try {
-    // Parse the form data
-    const formData = await request.formData();
-    
-    // Get metadata from the form
-    const uploadId = formData.get('uploadId') as string;
-    const fileName = formData.get('fileName') as string;
-    const fileSize = formData.get('fileSize') as string;
-    const fileType = formData.get('fileType') as string;
-    const totalChunks = parseInt(formData.get('totalChunks') as string);
+    const data = await request.json();
+    const { uploadId, fileName, totalChunks, walletAddress, fileType } = data;
 
-    if (!uploadId || !fileName || !fileSize || !totalChunks) {
+    if (!uploadId || !fileName || !totalChunks || !walletAddress) {
       return NextResponse.json(
-        { error: 'Missing required metadata' },
+        { error: 'Missing required parameters' },
         { status: 400 }
       );
     }
 
-    // Check if upload directory exists
+    console.log('Finalizing upload:', { uploadId, fileName, totalChunks });
+
     uploadDir = path.join(TEMP_DIR, uploadId);
-    if (!fs.existsSync(uploadDir)) {
-      return NextResponse.json(
-        { error: 'Upload not found' },
-        { status: 404 }
-      );
+    
+    // Check if all chunks exist
+    const chunkPromises = [];
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkPath = path.join(uploadDir, `chunk-${i}`);
+      chunkPromises.push(fs.access(chunkPath).catch(() => {
+        throw new Error(`Chunk ${i} is missing for upload ${uploadId}`);
+      }));
     }
+    
+    // Wait for all chunk checks to complete
+    await Promise.all(chunkPromises);
 
-    // Combine chunks into a single file
-    tempFilePath = path.join(uploadDir, fileName);
-    const writeStream = fs.createWriteStream(tempFilePath);
+    // Create a temporary file to combine all chunks
+    tempFilePath = path.join(TEMP_DIR, fileName);
+    const writeStream = createWriteStream(tempFilePath);
     
-    console.log(`Combining ${totalChunks} chunks for upload ${uploadId}`);
-    
-    // Check if all chunks exist first before processing
-    const missingChunks = [];
+    // Combine all chunks in order
     for (let i = 0; i < totalChunks; i++) {
       const chunkPath = path.join(uploadDir, `chunk-${i}`);
-      if (!fs.existsSync(chunkPath)) {
-        missingChunks.push(i);
-      }
-    }
-    
-    if (missingChunks.length > 0) {
-      writeStream.close();
-      return NextResponse.json(
-        { error: `Missing chunks: ${missingChunks.join(', ')}` },
-        { status: 400 }
-      );
-    }
-    
-    // Process chunks in order
-    for (let i = 0; i < totalChunks; i++) {
-      const chunkPath = path.join(uploadDir, `chunk-${i}`);
-      const chunkData = fs.readFileSync(chunkPath);
-      writeStream.write(chunkData);
+      const readStream = createReadStream(chunkPath);
       
-      // Delete chunk after processing to free up space
-      fs.unlinkSync(chunkPath);
+      // Use pipeline for better error handling
+      await pipeline(readStream, writeStream, { end: false });
+      console.log(`Added chunk ${i} to ${fileName}`);
     }
     
     // Close the write stream
@@ -88,93 +68,47 @@ export async function POST(request: NextRequest) {
     
     console.log(`Combined file created at ${tempFilePath}`);
     
-    // Get the WebHash API key from environment variables
-    const webhashApiKey = process.env.WEBHASH_API_KEY;
-    if (!webhashApiKey) {
-      throw new Error('WebHash API key not configured');
-    }
+    // Get the WebHash SDK service
+    const webhashSDK = getWebHashSDK();
     
-    // Upload the combined file to WebHash
-    const webhashFormData = new FormData();
-    const fileStream = fs.createReadStream(tempFilePath);
+    // Upload the combined file using the WebHash SDK
+    const result = await webhashSDK.uploadFile(tempFilePath, walletAddress);
     
-    webhashFormData.append('file', fileStream, {
-      filename: fileName,
-      contentType: fileType || 'application/octet-stream',
+    console.log('WebHash SDK upload result:', result);
+    
+    // Return success response
+    return NextResponse.json({
+      success: true,
+      cid: result.cid,
+      name: result.fileName,
+      size: result.size
     });
-    
-    console.log('Uploading combined file to WebHash...');
-    
-    // Set a timeout for the WebHash upload - using a simple timeout instead of AbortController
-    // to avoid type compatibility issues with node-fetch
-    try {
-      // Upload to WebHash with a timeout
-      const uploadPromise = fetch('https://api.webhash.io/ipfs/upload', {
-        method: 'POST',
-        headers: {
-          'x-api-key': webhashApiKey,
-        },
-        body: webhashFormData,
-        // Using a longer timeout but still within our 60s limit
-        timeout: 45000 // 45 second timeout
-      });
-      
-      // Create a timeout promise
-      const timeoutPromise = new Promise<Response>((_, reject) => {
-        setTimeout(() => reject(new Error('Upload timeout')), 45000);
-      });
-      
-      // Race the upload against the timeout
-      const webhashResponse = await Promise.race([uploadPromise, timeoutPromise]);
-      
-      if (!webhashResponse.ok) {
-        const errorText = await webhashResponse.text();
-        throw new Error(`WebHash upload failed: ${webhashResponse.status} - ${errorText}`);
-      }
-      
-      const webhashResult = await webhashResponse.json();
-      console.log('WebHash upload successful:', webhashResult);
-      
-      // Clean up
-      fileStream.destroy();
-      fs.unlinkSync(tempFilePath);
-      fs.rmdirSync(uploadDir);
-      
-      return NextResponse.json(webhashResult);
-    } catch (error: any) {
-      // If it's a timeout error, return a specific message
-      if (error.message === 'Upload timeout' || error.type === 'request-timeout') {
-        return NextResponse.json(
-          { 
-            error: 'Upload timeout - file too large for serverless function limit',
-            cid: null,
-            status: 'timeout',
-            message: 'The upload took too long to complete. The file may be too large for the current plan limits.'
-          },
-          { status: 408 }
-        );
-      }
-      
-      throw error;
-    }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error finalizing upload:', error);
     
-    // Clean up any temporary files if they exist
-    try {
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
-      if (uploadDir && fs.existsSync(uploadDir)) {
-        fs.rmdirSync(uploadDir, { recursive: true });
-      }
-    } catch (cleanupError) {
-      console.error('Error during cleanup:', cleanupError);
-    }
-    
     return NextResponse.json(
-      { error: 'Failed to finalize upload', details: error.message },
+      { error: error instanceof Error ? error.message : 'Unknown error occurred during finalization' },
       { status: 500 }
     );
+  } finally {
+    // Clean up temporary files
+    try {
+      if (tempFilePath) {
+        await fs.unlink(tempFilePath).catch(() => {});
+      }
+      
+      if (uploadDir) {
+        // Delete all chunk files
+        const files = await fs.readdir(uploadDir);
+        await Promise.all(files.map(file => 
+          fs.unlink(path.join(uploadDir, file)).catch(() => {})
+        ));
+        
+        // Remove the upload directory
+        await fs.rmdir(uploadDir).catch(() => {});
+      }
+    } catch (cleanupError) {
+      console.error('Error cleaning up temporary files:', cleanupError);
+    }
   }
 } 

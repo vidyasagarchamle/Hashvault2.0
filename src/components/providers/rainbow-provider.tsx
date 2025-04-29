@@ -15,6 +15,9 @@ import { cookieStorage, createStorage } from 'wagmi';
 // Get your project ID at https://cloud.walletconnect.com/
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_WALLETCONNECT_PROJECT_ID';
 
+console.log("DEBUG: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID =", process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID);
+console.log("DEBUG: Using projectId =", projectId);
+
 // Add a warning if using the placeholder
 if (projectId === 'YOUR_WALLETCONNECT_PROJECT_ID') {
   console.warn('WARNING: You are using a placeholder WalletConnect project ID. Please replace it with a valid project ID from https://cloud.walletconnect.com/');
@@ -107,11 +110,10 @@ const queryClient = new QueryClient({
 
 export function RainbowKitClientProvider({ children }: { children: ReactNode }) {
   const { theme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(true);
 
-  // Wait until component is mounted to render
+  // Still keep the useEffect for logging
   useEffect(() => {
-    setMounted(true);
     console.log("RainbowKitClientProvider mounted with projectId:", projectId);
     console.log("Environment variables check:", {
       hasProjectId: !!process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,

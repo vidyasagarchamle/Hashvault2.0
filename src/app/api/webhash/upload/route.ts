@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getWebHashSDK } from '@/lib/webhash-sdk';
+import { promises as fs } from 'fs';
+import path from 'path';
+import os from 'os';
 
-// Set a timeout for the entire route
+// Set a timeout for the request
 export const maxDuration = 60; // 60 seconds for large file uploads
 
-// API keys for different endpoints
-const FILE_API_KEY = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
-const FOLDER_API_KEY = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee7q348b3';
+const TEMP_DIR = path.join(os.tmpdir(), 'hashvault-uploads');
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,10 +21,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract the API key
-    const apiKey = authHeader.split(' ')[1];
-    const baseUrl = 'http://52.38.175.117';
-
+    // Extract the wallet address (Bearer token is the wallet address in this case)
+    const walletAddress = authHeader.split(' ')[1];
+    
     // Clone the request to forward it
     const formData = await request.formData();
     
@@ -36,77 +37,68 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Determine which endpoint to use based on file type
+    // Create the temporary directory if it doesn't exist
+    await fs.mkdir(TEMP_DIR, { recursive: true }).catch(() => {});
+
+    // Convert File to Buffer
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // Determine if this is a folder upload based on file type
     const isZipFile = file.type === 'application/zip' || file.name.endsWith('.zip');
-    const port = isZipFile ? '5009' : '5000';
-    const webhashApiUrl = `${baseUrl}:${port}`;
-
-    // Use the appropriate API key based on file type
-    const expectedApiKey = isZipFile ? FOLDER_API_KEY : FILE_API_KEY;
-
-    // Create new FormData for the WebHash API
-    const webhashFormData = new FormData();
-    webhashFormData.append('file', file);
-
+    
     console.log('Upload request details:', {
       name: file.name,
       type: file.type,
       size: file.size,
-      endpoint: webhashApiUrl,
-      isZipFile,
-      apiKeyMatch: apiKey === expectedApiKey
+      isZipFile
     });
 
-    // Forward the request to the WebHash API with timeout
-    let webhashResponse;
-    try {
-      webhashResponse = await fetch(`${webhashApiUrl}/upload`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${expectedApiKey}`
-        },
-        body: webhashFormData,
-        signal: AbortSignal.timeout(50000) // 50 second timeout
-      });
-
-      console.log('WebHash API response status:', webhashResponse.status);
-
-      if (!webhashResponse.ok) {
-        const errorText = await webhashResponse.text();
-        console.error('WebHash API error:', {
-          status: webhashResponse.status,
-          error: errorText,
-          endpoint: webhashApiUrl
-        });
-        return NextResponse.json(
-          { error: `WebHash API error: ${errorText}` },
-          { status: webhashResponse.status }
-        );
+    // Get the WebHash SDK service
+    const webhashSDK = getWebHashSDK();
+    
+    // Upload the file or directory
+    let result;
+    if (isZipFile) {
+      // For zip files (folder uploads), we need to extract to a temp directory first
+      const tempZipPath = path.join(TEMP_DIR, file.name);
+      const extractDir = path.join(TEMP_DIR, path.basename(file.name, '.zip'));
+      
+      try {
+        // Save the zip file
+        await fs.writeFile(tempZipPath, buffer);
+        
+        // For production, you would extract the zip here and use the uploadDirectory method
+        // But for now, we'll just use uploadFileBuffer since the SDK doesn't support direct zip upload
+        result = await webhashSDK.uploadFileBuffer(buffer, file.name, walletAddress);
+      } finally {
+        // Clean up temporary files
+        try {
+          await fs.unlink(tempZipPath).catch(() => {});
+          // If you extracted the zip, you'd need to clean up the extracted directory here too
+        } catch (error) {
+          console.error('Error cleaning up temporary files:', error);
+        }
       }
-
-      // Get the response from WebHash
-      const data = await webhashResponse.json();
-      console.log('WebHash API success:', {
-        ...data,
-        endpoint: webhashApiUrl
-      });
-
-      return NextResponse.json(data);
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.error('Request timed out');
-        return NextResponse.json(
-          { error: 'Request timed out' },
-          { status: 504 }
-        );
-      }
-      console.error('Error during WebHash API request:', error);
-      throw error;
+    } else {
+      // Regular file upload
+      result = await webhashSDK.uploadFileBuffer(buffer, file.name, walletAddress);
     }
+
+    console.log('WebHash SDK upload result:', result);
+
+    // Return the result
+    return NextResponse.json({
+      success: true,
+      cid: result.cid,
+      name: result.fileName,
+      size: result.size
+    });
   } catch (error) {
-    console.error('Error handling upload:', error);
+    console.error('Error in WebHash upload API route:', error);
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Unknown error occurred during upload' },
       { status: 500 }
     );
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/lib/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -9,7 +9,7 @@ export default function ProtectedRoute({
 }: {
   children: React.ReactNode;
 }) {
-  const { authenticated, ready } = usePrivy();
+  const { authenticated, ready } = useAuth();
   const router = useRouter();
 
   useEffect(() => {

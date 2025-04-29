@@ -81,18 +81,13 @@ async function ensureDbConnection() {
   }
 }
 
-// Validate API key from authorization header
-function validateApiKey(authHeader: string | null): boolean {
-  if (!authHeader) return false;
+// Validate ownership
+function validateOwnership(file: IFile, walletAddress: string): boolean {
+  if (!file) {
+    return false;
+  }
   
-  // Extract token from "Bearer XYZ" format
-  const token = authHeader.startsWith('Bearer ') 
-    ? authHeader.substring(7) 
-    : authHeader;
-  
-  // Compare with environment variable
-  const validApiKey = process.env.NEXT_PUBLIC_WEBHASH_API_KEY;
-  return token === validApiKey;
+  return file.walletAddress === walletAddress;
 }
 
 export async function POST(request: NextRequest) {
@@ -104,14 +99,15 @@ export async function POST(request: NextRequest) {
       // Handle file upload via form data (external API)
       const authHeader = request.headers.get('Authorization');
       
-      // Validate API key for external requests
-      if (!validateApiKey(authHeader)) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      // Extract wallet address from Authorization header or query parameters
+      let walletAddress = 'anonymous';
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        walletAddress = authHeader.substring(7);
+      } else {
+        // Extract from query parameters as fallback
+        const { searchParams } = new URL(request.url);
+        walletAddress = searchParams.get('walletAddress') || 'anonymous';
       }
-
-      // Extract wallet address from query parameters or use default
-      const { searchParams } = new URL(request.url);
-      const walletAddress = searchParams.get('walletAddress') || 'anonymous';
 
       // Parse the form data with the file
       const formData = await request.formData();

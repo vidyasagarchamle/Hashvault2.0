@@ -2,11 +2,11 @@
 
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/ui/logo";
-import { usePrivy } from "@privy-io/react-auth";
+import { useAuth } from "@/lib/hooks/use-auth";
 import { ClientOnly } from "@/components/providers/client-only";
 
 export function Navigation() {
-  const { login } = usePrivy();
+  const { login } = useAuth();
 
   return (
     <ClientOnly>
@@ -16,7 +16,7 @@ export function Navigation() {
             <Logo size={32} />
             <span className="font-bold text-xl text-white">HashVault</span>
           </div>
-          <Button onClick={() => login()} variant="outline" className="border-white/20 hover:bg-white/10">
+          <Button onClick={() => login && login()} variant="outline" className="border-white/20 hover:bg-white/10">
             Connect Wallet
           </Button>
         </div>

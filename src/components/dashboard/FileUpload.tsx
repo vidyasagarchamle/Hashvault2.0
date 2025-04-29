@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrivy } from '@privy-io/react-auth';
+import { useAuth } from '@/lib/hooks/use-auth';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Upload, X, FileIcon, Image, Music, FileText, Video } from "lucide-react";
@@ -13,7 +13,7 @@ import { storageUpdateEvent, STORAGE_UPDATED } from './StoragePurchase';
 import { cn } from "@/lib/utils";
 
 export default function FileUpload() {
-  const { user } = usePrivy();
+  const { user } = useAuth();
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);

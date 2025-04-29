@@ -122,11 +122,7 @@ export function FileList() {
   const handleDownload = async (file: FileItem) => {
     try {
       const url = `https://ipfs.io/ipfs/${file.cid}`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_WEBHASH_API_KEY}`
-        }
-      });
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to download file: ${response.statusText}`);
       }

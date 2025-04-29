@@ -6,14 +6,6 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['formidable'],
   },
-  // Set body parser size limit for API routes
-  api: {
-    bodyParser: {
-      sizeLimit: '4mb', // Limit for chunk uploads
-    },
-    responseLimit: false,
-  },
-  // Note: The api.bodyParser config is used by Next.js to limit request sizes
   images: {
     domains: ['ipfs.io', 'gateway.ipfs.io'],
   }

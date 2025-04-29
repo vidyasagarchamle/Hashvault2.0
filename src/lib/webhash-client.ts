@@ -59,16 +59,23 @@ interface ProgressData {
   total: number;
 }
 
+export interface FinalizeUploadOptions {
+  uploadId: string;
+  fileName: string;
+  totalChunks: number;
+  fileType?: string;
+  walletAddress: string;
+  fileSize?: string;
+}
+
 export class WebHashClient {
   private static instance: WebHashClient;
   private baseUrl: string;
-  private apiKey: string;
   private cache: Map<string, { data: any; timestamp: number }>;
   private static CACHE_DURATION = 5000; // 5 seconds cache
 
   private constructor() {
     this.baseUrl = '/api/webhash';
-    this.apiKey = process.env.NEXT_PUBLIC_WEBHASH_API_KEY || '';
     this.cache = new Map();
   }
 
@@ -151,17 +158,14 @@ export class WebHashClient {
     }
 
     try {
-      // Upload to WebHash
+      // Upload to WebHash via our API
       const formData = new FormData();
       formData.append('file', file);
-
-      // Get the API key - using the exact key from the curl example
-      const apiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee6a268b3';
 
       const response = await fetch(`${this.baseUrl}/upload`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`
+          'Authorization': `Bearer ${walletAddress}` // Pass wallet address as Bearer token
         },
         body: formData
       });
@@ -291,15 +295,21 @@ export class WebHashClient {
       const formData = new FormData();
       formData.append('file', zipFile);
 
-      // Get the API key - using the exact key from the curl example for folder uploads
-      const apiKey = '22b02f7023db2e5f9c605fe7dca3ef879a74781bf773fb043ddeeb0ee7q348b3';
-
-      // Use the uploadFile method to handle the upload
-      const result = await this.uploadFile({
-        file: zipFile,
-        walletAddress,
-        onProgress
+      // Upload using our API endpoint with wallet address in Authorization header
+      const response = await fetch(`${this.baseUrl}/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${walletAddress}`
+        },
+        body: formData
       });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Folder upload failed');
+      }
+
+      const result = await response.json();
 
       // Store folder metadata
       const metadataResponse = await fetch('/api/upload', {
@@ -311,11 +321,10 @@ export class WebHashClient {
         body: JSON.stringify({
           fileName: folderName,
           cid: result.cid,
-          size: totalSize.toString(),
-          mimeType: 'application/zip',
+          size: zipFile.size.toString(),
+          mimeType: 'application/folder',
           walletAddress,
-          isFolder: true,
-          parentFolder: null
+          isFolder: true
         })
       });
 
@@ -324,24 +333,69 @@ export class WebHashClient {
         throw new Error(error.error || 'Failed to store folder metadata');
       }
 
-      // Show success toast
-      if (typeof window !== 'undefined') {
-        const toast = window.toast;
-        if (toast) {
-          toast.success('Folder uploaded successfully!');
-        }
+      return result;
+    } catch (error) {
+      console.error('Error in uploadFolder:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Finalize a chunked upload by requesting the server to combine the chunks and upload to WebHash
+   */
+  async finalizeChunkedUpload(options: FinalizeUploadOptions): Promise<any> {
+    const { uploadId, fileName, totalChunks, fileType, walletAddress } = options;
+
+    try {
+      console.log('Finalizing chunked upload:', options);
+
+      // Send finalize request
+      const response = await fetch(`${this.baseUrl}/finalize-upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${walletAddress}`
+        },
+        body: JSON.stringify({
+          uploadId,
+          fileName,
+          totalChunks,
+          fileType,
+          walletAddress // Include wallet address in the payload
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to finalize upload');
+      }
+
+      const result = await response.json();
+
+      // Store file metadata
+      const metadataResponse = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': walletAddress
+        },
+        body: JSON.stringify({
+          fileName,
+          cid: result.cid,
+          size: options.fileSize || '0',
+          mimeType: fileType || this.guessMimeType(fileName),
+          walletAddress
+        })
+      });
+
+      if (!metadataResponse.ok) {
+        const error = await metadataResponse.json();
+        throw new Error(error.error || 'Failed to store file metadata');
       }
 
       return result;
     } catch (error) {
-      // Show error toast
-      if (typeof window !== 'undefined') {
-        const toast = window.toast;
-        if (toast) {
-          toast.error('Failed to upload folder: ' + (error as Error).message);
-        }
-      }
-      console.error('Error in uploadFolder:', error);
+      console.error('Error in finalizeChunkedUpload:', error);
       throw error;
     }
   }

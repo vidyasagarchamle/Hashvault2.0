@@ -1,23 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
-// Create a temporary directory for storing chunks
+// Temporary directory for storing chunks
 const TEMP_DIR = path.join(os.tmpdir(), 'hashvault-uploads');
 
-// Ensure temp directory exists
-if (!fs.existsSync(TEMP_DIR)) {
-  fs.mkdirSync(TEMP_DIR, { recursive: true });
-}
-
-// New way to configure route options in Next.js App Router
-export const dynamic = 'force-dynamic';
-export const maxDuration = 30; // 30 seconds is enough for chunk uploads
-
-// The correct way to set request size limits in Next.js App Router
-export const fetchCache = 'force-no-store';
-export const revalidate = 0;
+// Set a timeout for the request
+export const maxDuration = 30; // 30 seconds for chunk upload
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,29 +55,25 @@ export async function POST(request: NextRequest) {
 
     // Create upload directory for this upload if it doesn't exist
     const uploadDir = path.join(TEMP_DIR, uploadId);
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
+    await fs.mkdir(uploadDir, { recursive: true });
 
     // Save the chunk to disk
     const chunkPath = path.join(uploadDir, `chunk-${chunkIndex}`);
     const buffer = Buffer.from(await fileChunk.arrayBuffer());
-    fs.writeFileSync(chunkPath, buffer);
+    await fs.writeFile(chunkPath, buffer);
 
     console.log(`Saved chunk ${chunkIndex} of ${totalChunks} for upload ${uploadId} (${buffer.length} bytes)`);
 
     // Return success response
-    return NextResponse.json({
+    return NextResponse.json({ 
       success: true,
-      message: `Chunk ${chunkIndex} of ${totalChunks} received`,
-      chunkIndex,
-      totalChunks,
-      uploadId
+      message: `Saved chunk ${chunkIndex} of ${totalChunks}`
     });
   } catch (error) {
     console.error('Error handling chunk upload:', error);
+    
     return NextResponse.json(
-      { error: 'Failed to process chunk upload', details: (error as Error).message },
+      { error: error instanceof Error ? error.message : 'Unknown error occurred during chunk upload' },
       { status: 500 }
     );
   }
