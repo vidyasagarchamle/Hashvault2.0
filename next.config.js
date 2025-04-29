@@ -8,7 +8,14 @@ const nextConfig = {
   },
   images: {
     domains: ['ipfs.io', 'gateway.ipfs.io'],
-  }
+  },
+  // Ensure CSS modules are properly handled
+  webpack: (config) => {
+    // Add custom webpack configuration if needed
+    return config;
+  },
+  // Enable source maps in production for easier debugging
+  productionBrowserSourceMaps: true,
 };
 
 module.exports = nextConfig; 

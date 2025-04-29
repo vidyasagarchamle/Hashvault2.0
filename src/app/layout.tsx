@@ -1,5 +1,6 @@
 import { Inter } from "next/font/google";
 import "./globals.css";
+import "./vercel.css";
 import { ToasterProvider } from "@/components/providers/toaster-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ClientWrapper } from "@/components/providers/client-wrapper";
@@ -26,13 +27,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className="dark">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <link rel="icon" href="/favicon.ico" sizes="32x32" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="manifest" href="/site.webmanifest" />
-        <meta name="theme-color" content="#4f46e5" />
+        <meta name="theme-color" content="#0f172a" />
       </head>
       <body className={`${inter.className} antialiased bg-gradient-to-b from-gray-900 via-gray-800 to-black`}>
         <ThemeProvider
@@ -40,6 +41,7 @@ export default function RootLayout({
           defaultTheme="dark"
           enableSystem={false}
           disableTransitionOnChange
+          forcedTheme="dark" 
         >
           <ClientWrapper>
             <RainbowKitClientProvider>
