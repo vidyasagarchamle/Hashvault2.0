@@ -10,8 +10,7 @@
     { "source": "/(.*)", "destination": "/" }
   ],
   "env": {
-    "NODE_OPTIONS": "--max-old-space-size=4096",
-    "NEXT_PUBLIC_FORCE_DARK_MODE": "true"
+    "NODE_OPTIONS": "--max-old-space-size=4096"
   },
   "headers": [
     {
